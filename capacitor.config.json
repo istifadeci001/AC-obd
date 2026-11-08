@@ -1,0 +1,8 @@
+{
+  "appId": "com.acobd.app",
+  "appName": "AC OBD",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
