@@ -4,51 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AC OBD</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { height: 100%; margin: 0; }
-  body {
-    background: #0b0f14; color: #e6edf3;
-    font-family: system-ui, sans-serif;
-    display: flex; align-items: center; justify-content: center;
-    padding: env(safe-area-inset-top, 0px) 16px env(safe-area-inset-bottom, 0px);
-    box-sizing: border-box;
-  }
-  .card { width: 100%; max-width: 420px; text-align: center; }
-  h1 { font-size: 40px; margin: 0 0 4px; letter-spacing: 2px; color: #3ddc97; }
-  .sub { color: #8b98a5; margin-bottom: 28px; }
-  .box {
-    background: #131a22; border: 1px solid #243040;
-    border-radius: 12px; padding: 16px; text-align: left; margin-bottom: 12px;
-  }
-  .row { display: flex; justify-content: space-between; padding: 6px 0; }
-  .ok { color: #3ddc97; }
-  .no { color: #ffb454; }
-</style>
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/obd.css">
 </head>
 <body>
-<div class="card">
-  <h1>AC OBD</h1>
-  <div class="sub">Peşəkar avtomobil diaqnostikası</div>
-  <div class="box">
-    <div class="row"><span>Mərhələ</span><span class="ok">0 — Boş tətbiq</span></div>
-    <div class="row"><span>Tətbiq (APK)</span><span class="ok">İşləyir</span></div>
-    <div class="row"><span>JavaScript</span><span id="js" class="no">yoxlanılır…</span></div>
-    <div class="row"><span>Vaxt</span><span id="t">—</span></div>
-  </div>
-  <div class="box">
-    <div class="row"><span>Bluetooth (BLE)</span><span class="no">hələ yoxdur</span></div>
-    <div class="row"><span>OBD adapter</span><span class="no">hələ yoxdur</span></div>
-    <div class="row"><span>Real ECU məlumatı</span><span class="no">hələ yoxdur</span></div>
-  </div>
-</div>
-<script>
-  document.getElementById('js').textContent = 'işləyir';
-  document.getElementById('js').className = 'ok';
-  function tick() {
-    document.getElementById('t').textContent = new Date().toLocaleTimeString('az');
-  }
-  tick(); setInterval(tick, 1000);
-</script>
+<header>
+  <button id="menu" type="button" aria-label="Menu">☰</button>
+  <div class="brand">AC OBD</div>
+  <div id="conn" class="pill off"></div>
+</header>
+<main id="view"></main>
+<nav id="nav"></nav>
+<div id="drawer"><div class="panel" id="drawerlist"></div></div>
+<script src="js/ble.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/dtc-db.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+<script src="js/log.js"></script>
+<script src="js/pids.js"></script>
+<script src="js/transport.js"></script>
+<script src="js/elm.js"></script>
+<script src="js/obd.js"></script>
+<script src="js/ui-obd.js"></script>
 </body>
 </html>
