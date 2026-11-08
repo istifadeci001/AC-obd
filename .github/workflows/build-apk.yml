@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Paketləri quraşdır
+        run: npm install
+
+      - name: Android layihəsini yarat
+        run: npx cap add android
+
+      - name: Faylları sinxronlaşdır
+        run: npx cap sync android
+
+      - name: APK qur
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: APK-nı hazırla
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk AC-OBD.apk
+
+      - name: Ehtiyat üçün artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AC-OBD-apk
+          path: AC-OBD.apk
+
+      - name: Release yarat
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest -y --cleanup-tag || true
+          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "Mərhələ 0"
