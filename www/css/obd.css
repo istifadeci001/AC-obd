@@ -1,0 +1,9 @@
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+input[type=checkbox]{width:auto;margin:0 6px 0 0;padding:0}
+.big{font-size:30px;font-weight:700;margin:4px 0}
+.spark{width:100%;height:56px;display:block;margin-top:6px}
+.cmp{width:100%;height:180px;display:block}
+.log{font-size:11px;line-height:1.35;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;background:#0a0e13;border-radius:8px;padding:8px;color:#9fb0c0}
+.dev{display:flex;justify-content:space-between;align-items:center;gap:8px}
+details summary{padding:4px 0;color:var(--tx)}
+.chk{display:block;padding:5px 0;font-size:14px;color:var(--tx)}
