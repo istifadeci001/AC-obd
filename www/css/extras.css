@@ -1,0 +1,9 @@
+main{padding-bottom:8px}
+#foot{padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 84px);text-align:center;font-size:11px;line-height:1.7;color:var(--mut)}
+.gl{padding:9px 0;border-bottom:1px solid #1b2531}
+.gl:last-child{border-bottom:0}
+.gl .l{display:inline-block;width:30px;font-size:11px;color:var(--mut)}
+.gl .a{font-weight:600}
+#welcome{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50;align-items:center;justify-content:center;padding:16px}
+.wbox{background:var(--card);border:1px solid var(--ok);border-radius:12px;padding:16px;max-width:420px;width:100%;max-height:90%;overflow-y:auto}
+a.mail{color:var(--acc);word-break:break-all}
