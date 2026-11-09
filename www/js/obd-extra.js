@@ -85,7 +85,7 @@
         var pre = '42' + pid + '00';
         var r = cc.filter(function (x) { return x.indexOf(pre) === 0; })[0];
         if (!r) continue;
-        var d = p.dec(bytesOf(r.slice(8)));
+        var d = p.dec(bytesOf(r.slice(6)));
         if (d && isFinite(d.v)) res.pids[pid] = { v: d.v };
       } catch (e) { Log.add('ERR', 'freeze ' + pid + ': ' + e.message); }
     }
