@@ -37,11 +37,19 @@ jobs:
       - name: Faylları sinxronlaşdır
         run: npx cap sync android
 
-      - name: APK qur
+      - name: Gradle gözləmə limitini artır
+        run: sed -i 's/networkTimeout=.*/networkTimeout=120000/' android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: APK qur (3 cəhd)
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          for i in 1 2 3; do
+            ./gradlew assembleDebug && exit 0
+            echo "Cəhd $i alınmadı, 20 san sonra təkrar"
+            sleep 20
+          done
+          exit 1
 
       - name: APK-nı hazırla
         run: cp android/app/build/outputs/apk/debug/app-debug.apk AC-OBD.apk
@@ -57,4 +65,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "Mərhələ 2"
+          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "Mərhələ 3"
