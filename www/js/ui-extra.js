@@ -55,23 +55,52 @@
     ctx.freeze = await OBD.readFreeze().catch(function (e) { return { dtc: null, pids: {}, status: e.message }; });
   }
 
+  function nrcText(r) {
+    var m = {
+      '22': T('şərtlər uyğun deyil (mühərriki söndürüb açarı ON saxlayın)', 'conditions not correct (engine off, key ON)'),
+      '11': T('bu servis dəstəklənmir', 'service not supported'),
+      '12': T('alt funksiya dəstəklənmir', 'sub-function not supported'),
+      '21': T('ECU məşğuldur, təkrar yoxlayın', 'ECU busy, retry'),
+      '78': T('ECU cavab hazırlayır', 'ECU still processing')
+    };
+    return r.nrc ? (m[r.nrc] || (T('kod ', 'code ') + r.nrc)) : T('cavab alınmadı', 'no response');
+  }
+
   async function clearFlow() {
-    var spd = OBD.values['0D'];
-    if (spd && spd.v > 0) { errMsg = T('Avtomobil hərəkətdədir. Silmə bloklanıb.', 'Vehicle is moving. Clear is blocked.'); rerender(); return; }
-    if (!confirm(T('Xəta kodları və Freeze Frame silinəcək, Check Engine işığı sönəcək, hazırlıq (readiness) testləri sıfırlanacaq. Nasazlıq düzəlmir, yalnız qeyd silinir. Əvvəl kodlar telefonda saxlanılacaq. Davam edək?', 'Fault codes and Freeze Frame will be erased, the Check Engine light will go off and readiness tests will reset. The fault is not fixed, only the record is erased. Codes will be saved on the phone first. Continue?'))) return;
+    if (busy) return;
+    errMsg = ''; msg = '';
+    var spd = null, rpm = null;
+    OBD.stopPoll();
+    busy = T('Avtomobil vəziyyəti yoxlanır…', 'Checking vehicle state…'); rerender();
+    try { spd = await OBD.readSpeed(); rpm = await OBD.readRpm(); } catch (e) { Log.add('ERR', 'silmə yoxlaması: ' + e.message); }
+    busy = '';
+    if (spd === null) { errMsg = T('Sürət ECU-dan oxunmadı, avtomobilin dayandığını təsdiq etmək mümkün deyil. Silmə bloklandı.', 'Speed could not be read from the ECU, so standstill cannot be confirmed. Erase blocked.'); rerender(); return; }
+    if (spd > 0) { errMsg = T('Avtomobil hərəkətdədir (' + spd + ' km/saat). Silmə bloklandı.', 'Vehicle is moving (' + spd + ' km/h). Erase blocked.'); rerender(); return; }
+    if (rpm !== null && rpm > 0 && !confirm(T('Mühərrik işləyir (' + Math.round(rpm) + ' rpm). Bir çox avtomobil kod silməni yalnız mühərrik söndürülü, açar ON halında qəbul edir. Yenə də davam edək?', 'Engine is running (' + Math.round(rpm) + ' rpm). Many vehicles accept code erase only with the engine off and key ON. Continue anyway?'))) { rerender(); return; }
+    if (!confirm(T('Xəta kodları və Freeze Frame silinəcək, Check Engine işığı sönəcək, hazırlıq (readiness) testləri sıfırlanacaq. Nasazlıq düzəlmir, yalnız qeyd silinir. Əvvəl kodlar telefonda saxlanılacaq. Davam edək?', 'Fault codes and Freeze Frame will be erased, the Check Engine light will go off and readiness tests will reset. The fault is not fixed, only the record is erased. Codes will be saved on the phone first. Continue?'))) { rerender(); return; }
     await run(T('Kodlar saxlanılır…', 'Saving codes…'), async function () {
       await readAll();
+      var d = ctx.dtc;
+      if (!d || !(d.stored.ok || d.pending.ok || d.permanent.ok)) throw new Error(T('Kodlar oxunmadığı üçün ehtiyat nüsxə saxlanmadı. Silmə dayandırıldı.', 'Codes could not be read, so no backup was saved. Erase stopped.'));
       var bk = Store.get('dtcbackup', []);
-      bk.unshift({ t: ctx.dtc.t, dtc: ctx.dtc, freeze: ctx.freeze });
-      Store.set('dtcbackup', bk.slice(0, 10));
+      bk.unshift({ t: d.t, dtc: d, freeze: ctx.freeze });
+      if (!Store.set('dtcbackup', bk.slice(0, 10))) throw new Error(T('Ehtiyat nüsxə yaddaşa yazılmadı (yaddaş dolu ola bilər). Silmə dayandırıldı.', 'Backup could not be written (storage may be full). Erase stopped.'));
     });
-    if (!ctx.dtc) return;
+    if (errMsg || !ctx.dtc) return;
     if (!confirm(T('Kodlar saxlandı. Son təsdiq: kodlar silinsin?', 'Codes saved. Final confirmation: erase codes?'))) return;
     await run(T('Silinir…', 'Erasing…'), async function () {
       var r = await OBD.clearDtcs();
-      if (!r.ok) throw new Error(T('ECU silməyə icazə vermədi: ', 'ECU refused to erase: ') + r.text + T(' (bəzi avtomobillərdə mühərrik söndürülməlidir, açar ON)', ' (some vehicles need the engine off, key ON)'));
-      ctx.dtc = null; ctx.freeze = null;
-      msg = T('Silmə əmri qəbul edildi. Kodları yenidən oxuyub yoxlayın.', 'Erase command accepted. Read the codes again to verify.');
+      if (!r.ok) throw new Error(T('ECU silməni rədd etdi: ', 'ECU refused to erase: ') + nrcText(r) + ' [' + r.raw + ']');
+      await new Promise(function (res) { setTimeout(res, 2000); });
+      await readAll();
+      var d = ctx.dtc;
+      var st = d.stored.ok ? d.stored.codes : [], pe = d.pending.ok ? d.pending.codes : [], pm = d.permanent.ok ? d.permanent.codes : [];
+      if (!st.length && !pe.length) {
+        msg = T('Silindi: saxlanmış və gözləyən kod yoxdur.', 'Erased: no stored or pending codes.') +
+          (pm.length ? T(' Daimi (0A) kodlar qalır: ' + pm.join(', ') + '. Bu normaldır: ECU onları yalnız nasazlıq düzəldikdən sonra özü silir.', ' Permanent (0A) codes remain: ' + pm.join(', ') + '. This is normal: the ECU clears them itself after the fault is fixed.') : '');
+      } else {
+        errMsg = T('ECU əmri qəbul etdi, amma kodlar qalır: ' + st.concat(pe).join(', ') + '. Mühərriki söndürüb açarı ON saxlayaraq təkrar yoxlayın. Nasazlıq aktivdirsə kod yenidən yazıla bilər.', 'ECU accepted the command, but codes remain: ' + st.concat(pe).join(', ') + '. Retry with the engine off and key ON. If the fault is active the code may be set again.');
+      }
     });
   }
 
@@ -83,21 +112,23 @@
     else r.codes.forEach(function (c) {
       var d = window.DTC_DB[c];
       h += '<div class="row"><span><b>' + esc(c) + '</b><br><span class="sm">' + esc(d ? (L() === 'en' ? d.en : d.az) : T('bazada yoxdur', 'not in database')) + '</span></span>' +
-        (d ? '<button class="btn alt" style="width:auto;margin:0" data-ex="look" data-c="' + esc(c) + '">' + esc(T('bax', 'view')) + '</button>' : '') + '</div>';
+        '<span style="display:flex;gap:6px"><button class="btn alt" style="width:auto;margin:0" data-ex="look" data-c="' + esc(c) + '">' + esc(T('bax', 'view')) + '</button>' +
+        '<button class="btn alt" style="width:auto;margin:0" data-ex="aiexp" data-c="' + esc(c) + '">AI</button></span></div>';
     });
     return h;
   }
 
   screens.dtc = function () {
     var d = ctx.dtc, bk = Store.get('dtcbackup', []);
-    var h = title('Xəta kodları (Fault Codes)', 'Fault Codes') + needEcu() + stat();
+    var h = title('Xəta kodları (Fault Codes)', 'Fault Codes') + needEcu() + stat() +
+      Compat.note('dtc03', 'Saxlanmış kodlar (Mode 03)') + Compat.note('dtc0a', 'Daimi kodlar (Mode 0A)');
     h += card('<p>' + esc(T('Kodları oxumaq təhlükəsizdir. Silmək kodları və Freeze Frame-i itirir, ona görə əvvəl avtomatik saxlanılır.', 'Reading codes is safe. Erasing loses codes and Freeze Frame, so they are saved first.')) + '</p>' +
       btn(T('Bütün kodları oxu (03, 07, 0A)', 'Read all codes (03, 07, 0A)'), 'readall', off()) +
       (d ? codeBlock(T('Saxlanmış (03)', 'Stored (03)'), d.stored) + codeBlock(T('Gözləyən (07)', 'Pending (07)'), d.pending) + codeBlock(T('Daimi (0A)', 'Permanent (0A)'), d.permanent) : ''));
     h += card('<label>' + esc(T('Kodu bazadan axtar', 'Look up a code')) + '</label>' +
       '<input id="dtcq" type="text" autocapitalize="characters" autocomplete="off" placeholder="P0420"><div id="dtcres"></div>');
     h += card('<label>' + esc(T('Kodları sil (Mode 04)', 'Erase codes (Mode 04)')) + '</label>' +
-      '<p>' + esc(T('Silmədən əvvəl iki təsdiq istənir. Bəzi avtomobillərdə mühərrik söndürülməlidir (açar ON).', 'Two confirmations are required. Some vehicles need the engine off (key ON).')) + '</p>' +
+      '<p>' + esc(T('Silmədən əvvəl sürət və mühərrik yoxlanır, kodlar saxlanılır, iki təsdiq istənir. Bəzi avtomobillərdə mühərrik söndürülməlidir (açar ON). Daimi (0A) kodlar silinmir.', 'Speed and engine are checked, codes are saved, two confirmations are required. Some vehicles need the engine off (key ON). Permanent (0A) codes are not erased.')) + '</p>' +
       btn(T('Kodları sil', 'Erase codes'), 'clear', off(), 'del') +
       '<p class="sm">' + esc(T('Telefonda saxlanmış ehtiyat nüsxə: ', 'Backups saved on phone: ') + bk.length) + '</p>');
     return h;
@@ -105,7 +136,7 @@
 
   screens.freeze = function () {
     var f = ctx.freeze;
-    var h = title('Dondurulmuş kadr (Freeze Frame)', 'Freeze Frame') + needEcu() + stat() +
+    var h = title('Dondurulmuş kadr (Freeze Frame)', 'Freeze Frame') + needEcu() + stat() + Compat.note('freeze', 'Freeze Frame (Mode 02)') +
       card(btn(T('Freeze Frame oxu (Mode 02)', 'Read Freeze Frame (Mode 02)'), 'readfz', off()));
     if (f) {
       var b = '';
@@ -116,6 +147,7 @@
           var p = window.PIDS[id];
           b += row(L() === 'en' ? p.en : p.az, f.pids[id].v.toFixed(p.fix) + ' ' + p.unit);
         });
+        if (!Object.keys(f.pids).length) b += '<p class="sm">' + esc(T('Dəyərlər oxunmadı: ECU Freeze Frame PID-lərini vermədi.', 'No values read: the ECU returned no Freeze Frame PIDs.')) + '</p>';
       }
       h += card(b);
     }
@@ -125,15 +157,18 @@
   screens.vehicle = function () {
     var g = Store.get('garage', []), aid = Store.get('activeVehicle', null), v = null;
     g.forEach(function (x) { if (x.id === aid) v = x; });
-    var h = title('Avtomobil məlumatı (Vehicle Information)', 'Vehicle Information') + needEcu() + stat();
+    var dv = ctx.vin ? OBD.decodeVin(ctx.vin) : null;
+    var h = title('Avtomobil məlumatı (Vehicle Information)', 'Vehicle Information') + needEcu() + stat() + Compat.note('vin', 'VIN (Mode 09)');
     h += card('<label>' + esc(T('Profil (siz daxil etmisiniz, ECU-dan deyil)', 'Profile (user entered, not from ECU)')) + '</label>' +
       (v ? row(T('Avtomobil', 'Vehicle'), [v.make, v.model, v.year].filter(Boolean).join(' ')) + row(T('Mühərrik', 'Engine'), v.engine || '—') : '<p>' + esc(T('Qarajda aktiv avtomobil yoxdur.', 'No active vehicle in Garage.')) + '</p>'));
     h += card('<label>' + esc(T('Adapter və ECU (oxunub)', 'Adapter and ECU (read)')) + '</label>' +
       row('ELM327', S.elmVersion || '—') + row(T('Protokol', 'Protocol'), S.protocol || '—') +
       row(T('Dəstəklənən PID', 'Supported PIDs'), S.supported.length ? String(S.supported.length) : '—') +
-      row('VIN', ctx.vin || '—') + row(T('Kalibrasiya ID', 'Calibration ID'), ctx.cal || '—') +
+      row('VIN', ctx.vin || '—') +
+      (dv ? row(T('Ölkə (təxmini)', 'Country (approx.)'), dv.region) + row(T('Model ili (təxmini)', 'Model year (approx.)'), dv.year) : '') +
+      row(T('Kalibrasiya ID', 'Calibration ID'), ctx.cal || '—') +
       btn(T('VIN və kalibrasiya oxu (Mode 09)', 'Read VIN and calibration (Mode 09)'), 'readvin', off()) +
-      '<p class="sm">' + esc(T('Bəzi avtomobillər Mode 09-u dəstəkləmir.', 'Some vehicles do not support Mode 09.')) + '</p>');
+      '<p class="sm">' + esc(T('Bəzi avtomobillər Mode 09-u dəstəkləmir. Ölkə və il VIN-dən təxmini çıxarılır.', 'Some vehicles do not support Mode 09. Country and year are approximate, decoded from the VIN.')) + '</p>');
     return h;
   };
 
@@ -178,7 +213,7 @@
   screens.monitor = function () {
     var ev = Session.events().slice(0, 20), ts = Session.tests();
     var h = title('AI canlı monitor (AI Live Monitor)', 'AI Live Monitor');
-    h += card('<p>' + esc(T('Analiz lokal aparılır, internetə heç nə göndərilmir (bulud AI bu versiyada yoxdur). Canlı oxuma işləməlidir.', 'Analysis runs locally, nothing is sent online (no cloud AI in this version). Live reading must be running.')) + '</p>' +
+    h += card('<p>' + esc(T('Analiz lokal aparılır, internetə heç nə göndərilmir. Canlı oxuma işləməlidir.', 'Analysis runs locally, nothing is sent online. Live reading must be running.')) + '</p>' +
       '<label>' + esc(T('Analiz intervalı', 'Analysis interval')) + '</label>' +
       '<select id="mevery" data-ex="every">' + [5, 10, 30].map(function (n) { return '<option value="' + n + '"' + (mon.every === n ? ' selected' : '') + '>' + n + ' ' + T('san', 's') + '</option>'; }).join('') + '</select>' +
       row(T('Vəziyyət', 'Status'), mon.on ? T('işləyir', 'running') : T('dayanıb', 'stopped'), mon.on ? 'ok' : 'no') +
@@ -259,6 +294,7 @@
       var q = document.getElementById('dtcq');
       if (q) { q.value = el.getAttribute('data-c'); q.dispatchEvent(new Event('input', { bubbles: true })); q.scrollIntoView(); }
     }
+    else if (a === 'aiexp') { Store.set('ai_pending_code', el.getAttribute('data-c')); location.hash = '#aionline'; }
     else if (a === 'readfz') run(T('Freeze Frame oxunur…', 'Reading Freeze Frame…'), async function () { OBD.stopPoll(); ctx.freeze = await OBD.readFreeze(); });
     else if (a === 'readvin') run(T('VIN oxunur…', 'Reading VIN…'), async function () {
       OBD.stopPoll();
