@@ -34,8 +34,26 @@ jobs:
       - name: Android layihəsini yarat
         run: npx cap add android
 
+      - name: İkonu quraşdır
+        run: cp -r branding/res/. android/app/src/main/res/
+
       - name: Faylları sinxronlaşdır
         run: npx cap sync android
+
+      - name: Sabit imza açarı
+        run: |
+          mkdir -p ~/.android
+          if [ -f branding/debug.keystore ]; then
+            cp branding/debug.keystore ~/.android/debug.keystore
+          else
+            keytool -genkeypair -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            cp ~/.android/debug.keystore branding/debug.keystore
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add branding/debug.keystore
+            git commit -m "Sabit imza acari"
+            git push || (git pull --rebase && git push) || echo "Açar repozitoriyaya yazıla bilmədi"
+          fi
 
       - name: Gradle gözləmə limitini artır
         run: sed -i 's/networkTimeout=.*/networkTimeout=120000/' android/gradle/wrapper/gradle-wrapper.properties
@@ -65,4 +83,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "Mərhələ 3"
+          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.1.0"
