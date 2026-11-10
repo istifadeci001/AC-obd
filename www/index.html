@@ -4,18 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AC OBD</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/obd.css">
 <link rel="stylesheet" href="css/extras.css">
+<style>.logo{width:30px;height:30px;border-radius:8px;display:block}</style>
 </head>
 <body>
 <header>
   <button id="menu" type="button" aria-label="Menu">☰</button>
+  <img class="logo" src="icon.svg" alt="">
   <div class="brand">AC OBD</div>
   <div id="conn" class="pill off"></div>
 </header>
 <main id="view"></main>
-<footer id="foot">© 2026 ACLab. All Rights Reserved.<br>Designed &amp; Developed by A.Cəfərli<br>Version 1.0.0 | Est. 2026</footer>
+<footer id="foot">© 2026 ACLab. All Rights Reserved.<br>Designed &amp; Developed by A.Cəfərli<br>Version <span id="appver">1.1.0</span> | Est. 2026</footer>
 <nav id="nav"></nav>
 <div id="drawer"><div class="panel" id="drawerlist"></div></div>
 <div id="errbox" style="display:none;position:fixed;left:8px;right:8px;bottom:80px;z-index:99;background:#5a1111;color:#fff;font-size:12px;padding:10px;border-radius:8px;word-break:break-all"></div>
@@ -37,7 +40,9 @@
 </script>
 <script src="js/ble.js"></script>
 <script src="js/i18n.js"></script>
+<script src="js/version.js"></script>
 <script src="js/dtc-db.js"></script>
+<script src="js/dtc-extra.js"></script>
 <script src="js/store.js"></script>
 <script src="js/app.js"></script>
 <script src="js/log.js"></script>
@@ -47,9 +52,14 @@
 <script src="js/obd.js"></script>
 <script src="js/ui-obd.js"></script>
 <script src="js/obd-extra.js"></script>
+<script src="js/formula.js"></script>
+<script src="js/compat.js"></script>
 <script src="js/ai-rules.js"></script>
+<script src="js/ai-extra.js"></script>
+<script src="js/ai-online.js"></script>
 <script src="js/session.js"></script>
 <script src="js/ui-extra.js"></script>
+<script src="js/ui-tools.js"></script>
 <script src="js/ui-dash.js"></script>
 <script src="js/glossary.js"></script>
 <script src="js/ui-more.js"></script>
