@@ -35,17 +35,24 @@ jobs:
         run: npx cap add android
 
       - name: İkonu quraşdır
-        run: cp -r branding/res/. android/app/src/main/res/
+        run: |
+          if [ -d branding/res ]; then
+            cp -r branding/res/. android/app/src/main/res/
+          else
+            echo "branding/res tapılmadı, standart ikon qalır"
+          fi
 
       - name: Faylları sinxronlaşdır
         run: npx cap sync android
 
       - name: Sabit imza açarı
+        continue-on-error: true
         run: |
           mkdir -p ~/.android
           if [ -f branding/debug.keystore ]; then
             cp branding/debug.keystore ~/.android/debug.keystore
           else
+            mkdir -p branding
             keytool -genkeypair -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
             cp ~/.android/debug.keystore branding/debug.keystore
             git config user.name "github-actions"
