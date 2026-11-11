@@ -31,15 +31,46 @@ jobs:
           npm run build:ble
           test -f www/js/ble.js
 
+      - name: DTC bazasını yüklə (obdex, CC0)
+        continue-on-error: true
+        run: |
+          echo 'window.DTC_BIG={};window.DTC_BIG_N=0;' > www/js/dtc-data.js
+          node tools/build-dtc.js
+
       - name: Android layihəsini yarat
         run: npx cap add android
 
-      - name: İkonu quraşdır
+      - name: İkonu quraşdır (hazır)
         run: |
           if [ -d branding/res ]; then
             cp -r branding/res/. android/app/src/main/res/
           else
             echo "branding/res tapılmadı, standart ikon qalır"
+          fi
+
+      - name: İkonu icon.jpg-dən yarat (varsa)
+        continue-on-error: true
+        run: |
+          if [ -f www/icon.jpg ]; then
+            sudo apt-get install -y imagemagick > /dev/null
+            RES=android/app/src/main/res
+            BGC=$(convert www/icon.jpg -format '%[hex:p{3,3}]' info: | cut -c1-6)
+            [ ${#BGC} -eq 6 ] || BGC=0B0F14
+            for d in "mdpi 48 108" "hdpi 72 162" "xhdpi 96 216" "xxhdpi 144 324" "xxxhdpi 192 432"; do
+              set -- $d
+              mkdir -p $RES/mipmap-$1
+              convert www/icon.jpg -resize $2x$2^ -gravity center -extent $2x$2 $RES/mipmap-$1/ic_launcher.png
+              cp $RES/mipmap-$1/ic_launcher.png $RES/mipmap-$1/ic_launcher_round.png
+              S=$(( $3 * 61 / 100 ))
+              convert -size $3x$3 xc:none \( www/icon.jpg -resize ${S}x${S} \) -gravity center -composite $RES/mipmap-$1/ic_launcher_foreground.png
+            done
+            mkdir -p $RES/mipmap-anydpi-v26 $RES/values
+            printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#%s</color>\n</resources>\n' "$BGC" > $RES/values/ic_launcher_background.xml
+            for n in ic_launcher ic_launcher_round; do
+              printf '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/ic_launcher_background"/>\n    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>\n' > $RES/mipmap-anydpi-v26/$n.xml
+            done
+          else
+            echo "www/icon.jpg yoxdur, hazır ikon qalır"
           fi
 
       - name: Faylları sinxronlaşdır
@@ -90,4 +121,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.1.0"
+          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.2.0"
