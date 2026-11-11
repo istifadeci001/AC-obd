@@ -1,12 +1,17 @@
 (function () {
   'use strict';
   var view = document.getElementById('view'), S = OBD.S;
+  var ICON = { compat: '✅', connect: '🔌', live: '📈', monitor: '🤖', diag: '🧠', dtc: '⚠️', freeze: '🧊', readiness: '🚦', mode06: '🧪', advanced: '🛠️', vehicle: '🚗', logging: '📝', reports: '📄', custompid: '🎛️', aionline: '✨', backup: '💾', archive: '🗂️', glossary: '📚', garage: '🏠', settings: '⚙️', about: 'ℹ️' };
   var LBL = {
     compat: 'Dəstək yoxlaması (Compatibility)', readiness: 'Hazırlıq testləri (Readiness)', mode06: 'Mode 06 (xam)',
     custompid: 'Fərdi PID (Custom PID)', aionline: 'AI izah, internet (AI Explain)', backup: 'Ehtiyat nüsxə (Backup)',
     archive: 'Avtomobil arxivi (Vehicle Archive)', glossary: 'Terminlər lüğəti (Glossary)', about: 'Haqqımızda və Əlaqə (About)'
   };
-
+  var GROUPS = [
+    ['Diaqnostika', ['live', 'dtc', 'freeze', 'readiness', 'mode06', 'diag', 'monitor', 'compat']],
+    ['Avtomobil', ['vehicle', 'garage', 'archive', 'logging', 'reports']],
+    ['Alətlər', ['custompid', 'aionline', 'backup', 'glossary', 'advanced', 'settings', 'about']]
+  ];
   function L() { return Store.get('lang', 'az'); }
   function T(a, e) { return L() === 'en' ? e : a; }
   function esc(s) {
@@ -41,45 +46,35 @@
     g.forEach(function (x) { if (x.id === id) v = x; });
     return v;
   }
-
   function render() {
-    var I = I18N[L()] || I18N.az;
-    var v = activeVehicle(), d = Session.ctx.dtc;
-    var codes = (d && d.stored && d.stored.ok)
-      ? (d.stored.codes.length ? d.stored.codes.join(', ') : T('yoxdur', 'none'))
-      : T('oxunmayıb', 'not read');
-    var dataTxt = S.state === 'ecu'
-      ? (OBD.polling ? T('oxunur', 'reading') : T('ECU qoşulub, oxuma dayanıb', 'ECU connected, reading stopped'))
-      : T('yoxdur', 'none');
+    var I = I18N[L()] || I18N.az, v = activeVehicle(), d = Session.ctx.dtc, ok = S.state === 'ecu';
+    var codes = (d && d.stored && d.stored.ok) ? (d.stored.codes.length ? d.stored.codes.join(', ') : T('yoxdur', 'none')) : T('oxunmayıb', 'not read');
     var cs = Compat.summary(), has = Compat.has();
     var cTxt = has ? (cs.ok + ' ' + T('işləyir', 'working') + ' · ' + cs.no + ' ' + T('dəstəklənmir', 'unsupported') + ' · ' + cs.todo + ' ' + T('hələ yazılmayıb', 'not built yet'))
-      : (S.state === 'ecu' ? T('yoxlanılır…', 'checking…') : T('qoşulduqda avtomatik', 'automatic on connect'));
-    var secs = ['compat', 'connect', 'live', 'monitor', 'diag', 'dtc', 'freeze', 'readiness', 'mode06', 'advanced', 'vehicle', 'logging', 'reports', 'custompid', 'aionline', 'backup', 'archive', 'glossary', 'garage', 'settings', 'about'];
-    var tiles = secs.map(function (s) {
-      return '<a class="tile" href="#' + s + '">' + esc(I['nav_' + s] || LBL[s] || s) + '</a>';
-    }).join('');
-    view.innerHTML = '<div data-dash="1"><h2>' + esc(I.nav_dashboard) + '</h2><div class="card">' +
-      row(T('Bağlantı', 'Connection'), stateTxt(S.state), S.state === 'ecu' ? 'ok' : 'no') +
-      row(T('Real ECU məlumatı', 'Real ECU data'), dataTxt, OBD.polling ? 'ok' : 'no') +
+      : (ok ? T('yoxlanılır…', 'checking…') : T('qoşulduqda avtomatik', 'automatic on connect'));
+    var hero = '<div class="hero"><div class="st"><span class="dot' + (ok ? ' ok' : '') + '"></span>' + esc(stateTxt(S.state)) + '</div>' +
+      '<div class="sm" style="margin-top:6px">' + (ok ? esc((S.deviceName || '') + (S.protocol ? ' · ' + S.protocol : '') + ' · PID: ' + S.supported.length)
+        : esc(T('Adapteri OBD portuna taxın, açarı ON vəziyyətinə çevirin.', 'Plug the adapter into the OBD port and turn the ignition ON.'))) + '</div>' +
+      '<div class="car">🚗 ' + esc(v ? [v.make, v.model, v.year].filter(Boolean).join(' ') : T('Avtomobil seçilməyib (Qaraj)', 'No vehicle selected (Garage)')) + '</div>' +
+      '<div class="qa"><a class="main" href="#connect">🔌 ' + esc(ok ? T('Adapter', 'Adapter') : T('Qoşul', 'Connect')) + '</a><a href="#live">📈 ' + esc(T('Canlı', 'Live')) + '</a>' +
+      '<a href="#dtc">⚠️ ' + esc(T('Kodlar', 'Codes')) + '</a><a href="#compat">✅ ' + esc(T('Dəstək', 'Support')) + '</a></div></div>';
+    var info = '<div class="card" style="margin-top:14px">' +
       row(T('Dəstək yoxlaması', 'Compatibility'), cTxt, has && cs.no ? 'no' : (has ? 'ok' : 'sm')) +
-      row(T('Dəstəklənən PID', 'Supported PIDs'), S.supported.length ? String(S.supported.length) : '—') +
       row(T('Saxlanmış xəta kodları', 'Stored fault codes'), codes) +
-      row(T('Aktiv avtomobil', 'Active vehicle'), v ? [v.make, v.model, v.year].filter(Boolean).join(' ') : I.dash_none_vehicle) +
-      row(T('DTC bazası (ətraflı adlar)', 'DTC database (named codes)'), Object.keys(DTC_DB).length + ' ' + I.dash_codes) +
-      '</div><div class="grid">' + tiles + '</div></div>';
+      row(T('Xəta kodu bazası', 'DTC database'), (window.DTC_COUNT || 0) + ' ' + I.dash_codes) + '</div>';
+    var groups = GROUPS.map(function (g) {
+      return '<div class="sect">' + esc(g[0]) + '</div><div class="grid">' + g[1].map(function (s) {
+        return '<a class="tile" href="#' + s + '"><span class="ti">' + (ICON[s] || '•') + '</span><span>' + esc(I['nav_' + s] || LBL[s] || s) + '</span></a>';
+      }).join('') + '</div>';
+    }).join('');
+    view.innerHTML = '<div data-dash="1">' + hero + info + groups + '</div>';
   }
-
   new MutationObserver(function () {
     pill();
     if (cur() === 'dashboard' && !view.querySelector('[data-dash]')) render();
   }).observe(view, { childList: true });
-
-  OBD.on(function (type) {
-    pill();
-    if (type === 'state' && cur() === 'dashboard') render();
-  });
+  OBD.on(function (type) { pill(); if (type === 'state' && cur() === 'dashboard') render(); });
   Compat.on(function () { if (cur() === 'dashboard') render(); });
-
   pill();
   if (cur() === 'dashboard') render();
 })();
