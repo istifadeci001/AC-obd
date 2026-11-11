@@ -1,15 +1,16 @@
 (function () {
   'use strict';
   var view = document.getElementById('view'), S = OBD.S;
-  var ICON = { compat: '✅', connect: '🔌', live: '📈', monitor: '🤖', diag: '🧠', dtc: '⚠️', freeze: '🧊', readiness: '🚦', mode06: '🧪', advanced: '🛠️', vehicle: '🚗', logging: '📝', reports: '📄', custompid: '🎛️', aionline: '✨', backup: '💾', archive: '🗂️', glossary: '📚', garage: '🏠', settings: '⚙️', about: 'ℹ️' };
+  var ICON = { livediag: '🩺', fuel: '⛽', compat: '✅', connect: '🔌', live: '📈', monitor: '🤖', diag: '🧠', dtc: '⚠️', freeze: '🧊', readiness: '🚦', mode06: '🧪', advanced: '🛠️', vehicle: '🚗', logging: '📝', reports: '📄', custompid: '🎛️', aionline: '✨', backup: '💾', archive: '🗂️', glossary: '📚', garage: '🏠', settings: '⚙️', about: 'ℹ️' };
   var LBL = {
+    livediag: 'Canlı diaqnostika (Live Diagnostics)', fuel: 'Yanacaq, bak, təkər (Fuel & Tires)',
     compat: 'Dəstək yoxlaması (Compatibility)', readiness: 'Hazırlıq testləri (Readiness)', mode06: 'Mode 06 (xam)',
     custompid: 'Fərdi PID (Custom PID)', aionline: 'AI izah, internet (AI Explain)', backup: 'Ehtiyat nüsxə (Backup)',
     archive: 'Avtomobil arxivi (Vehicle Archive)', glossary: 'Terminlər lüğəti (Glossary)', about: 'Haqqımızda və Əlaqə (About)'
   };
   var GROUPS = [
-    ['Diaqnostika', ['live', 'dtc', 'freeze', 'readiness', 'mode06', 'diag', 'monitor', 'compat']],
-    ['Avtomobil', ['vehicle', 'garage', 'archive', 'logging', 'reports']],
+    ['Diaqnostika', ['livediag', 'live', 'dtc', 'freeze', 'readiness', 'mode06', 'diag', 'monitor', 'compat']],
+    ['Avtomobil', ['fuel', 'vehicle', 'garage', 'archive', 'logging', 'reports']],
     ['Alətlər', ['custompid', 'aionline', 'backup', 'glossary', 'advanced', 'settings', 'about']]
   ];
   function L() { return Store.get('lang', 'az'); }
@@ -56,8 +57,8 @@
       '<div class="sm" style="margin-top:6px">' + (ok ? esc((S.deviceName || '') + (S.protocol ? ' · ' + S.protocol : '') + ' · PID: ' + S.supported.length)
         : esc(T('Adapteri OBD portuna taxın, açarı ON vəziyyətinə çevirin.', 'Plug the adapter into the OBD port and turn the ignition ON.'))) + '</div>' +
       '<div class="car">🚗 ' + esc(v ? [v.make, v.model, v.year].filter(Boolean).join(' ') : T('Avtomobil seçilməyib (Qaraj)', 'No vehicle selected (Garage)')) + '</div>' +
-      '<div class="qa"><a class="main" href="#connect">🔌 ' + esc(ok ? T('Adapter', 'Adapter') : T('Qoşul', 'Connect')) + '</a><a href="#live">📈 ' + esc(T('Canlı', 'Live')) + '</a>' +
-      '<a href="#dtc">⚠️ ' + esc(T('Kodlar', 'Codes')) + '</a><a href="#compat">✅ ' + esc(T('Dəstək', 'Support')) + '</a></div></div>';
+      '<div class="qa"><a class="main" href="#connect">🔌 ' + esc(ok ? T('Adapter', 'Adapter') : T('Qoşul', 'Connect')) + '</a><a href="#livediag">🩺 ' + esc(T('Diaqnostika', 'Diagnostics')) + '</a>' +
+      '<a href="#dtc">⚠️ ' + esc(T('Kodlar', 'Codes')) + '</a><a href="#fuel">⛽ ' + esc(T('Yanacaq', 'Fuel')) + '</a></div></div>';
     var info = '<div class="card" style="margin-top:14px">' +
       row(T('Dəstək yoxlaması', 'Compatibility'), cTxt, has && cs.no ? 'no' : (has ? 'ok' : 'sm')) +
       row(T('Saxlanmış xəta kodları', 'Stored fault codes'), codes) +
