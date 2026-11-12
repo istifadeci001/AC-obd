@@ -37,6 +37,17 @@ jobs:
           echo 'window.DTC_BIG={};window.DTC_BIG_N=0;' > www/js/dtc-data.js
           node tools/build-dtc.js
 
+      - name: DTC tərcümələrini əlavə et (varsa)
+        run: |
+          mkdir -p www/data
+          for l in az ru; do
+            if [ -f data/dtc-$l.json ]; then
+              { printf 'window.DTC_TR_%s=' "$l"; cat data/dtc-$l.json; echo ';'; } > www/data/dtc-$l.js
+            else
+              echo "window.DTC_TR_$l={};" > www/data/dtc-$l.js
+            fi
+          done
+
       - name: Android layihəsini yarat
         run: npx cap add android
 
@@ -121,4 +132,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.2.0"
+          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.4.0"
