@@ -1,0 +1,52 @@
+name: DTC tərcüməsi (AI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: 'anthropic və ya openai'
+        default: 'anthropic'
+      model:
+        description: 'Model adı (provayderin sənədindən)'
+        required: true
+      limit:
+        description: 'Hər dil üçün neçə kod (0 = hamısı)'
+        default: '100'
+      langs:
+        description: 'Dillər'
+        default: 'az,ru'
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: DTC mənbəsini yüklə
+        run: node tools/build-dtc.js
+
+      - name: Tərcümə et
+        env:
+          AI_KEY: ${{ secrets.AI_KEY }}
+          PROVIDER: ${{ inputs.provider }}
+          MODEL: ${{ inputs.model }}
+          LIMIT: ${{ inputs.limit }}
+          LANGS: ${{ inputs.langs }}
+        run: node tools/translate-dtc.js
+
+      - name: Nəticəni repozitoriyaya yaz
+        if: always()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "DTC tərcümələri"
+          git push || (git pull --rebase && git push)
