@@ -81,6 +81,7 @@
       '<pre class="log" id="logpre"></pre>' +
       '<button class="btn alt" data-ob="copy">' + esc(T('Jurnalı kopyala', 'Copy log')) + '</button>' +
       '<button class="btn alt" data-ob="clearlog">' + esc(T('Jurnalı təmizlə', 'Clear log')) + '</button></div>';
+    h += Report.card();
     view.innerHTML = h;
     updateLog();
   }
@@ -146,6 +147,7 @@
     var h = '<h2>' + T('Canlı göstəricilər (Live Data)', 'Live Data') + '</h2>';
     if (S.state !== 'ecu') {
       h += '<div class="card warn"><p>' + esc(T('Real ECU-ya qoşulmamısınız. Əvvəl "Qoşul" bölməsində adapteri qoşun. Heç bir saxta dəyər göstərilmir.', 'Not connected to a real ECU. Connect the adapter first. No fake values are shown.')) + '</p></div>';
+      h += Report.card();
       view.innerHTML = h; return;
     }
     h += '<div id="spdwarn"></div>';
@@ -167,6 +169,7 @@
         '<p class="sm">' + esc(T('Hər xətt öz min–maks aralığına görə normallaşdırılıb. Kartlarda "qrafikdə" seçin.', 'Each line is normalised to its own min–max. Tick "chart" on cards.')) + '</p>' +
         '<canvas id="cmp" class="cmp"></canvas><div id="leg" class="sm"></div></div>';
     }
+    h += Report.card();
     view.innerHTML = h;
     if (OBD.polling) updateLive();
   }
