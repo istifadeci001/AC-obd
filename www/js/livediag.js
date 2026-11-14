@@ -1,6 +1,8 @@
 window.LiveDiag = (function () {
   var S = OBD.S, timer = null, subs = [];
-  var PRI = ['0C', '04', '05', '0F', '11', '47', '0B', '10', '0E', '1F', '03', '06', '07', '08', '09', '44', '14', '15', '24', '25', '42', '0D', '33', '49', '2C', '2D', '2F'];
+  // Vacib göstəricilər (RPM, sürət, temperatur, trim, O2) əvvəldə olmalıdır: limit dolanda sondakılar atılır
+  var PRI = ['0C', '0D', '05', '06', '07', '04', '0B', '1F', '03', '14', '15', '24', '25', '33', '0F', '11', '10', '0E', '44', '42', '47', '49', '08', '09', '2C', '2D', '2F'];
+  var MAXP = 14;
   var V = { N: 'Normal', S: 'Şübhəli', P: 'Problem ehtimalı', U: 'Məlumat kifayət deyil' };
   (function () {
     var P = window.PIDS;
@@ -11,7 +13,7 @@ window.LiveDiag = (function () {
     add('52', 'Etanol yanacaq faizi', 'Ethanol Fuel %', '%', 1, function (b) { return b[0] * 100 / 255; });
   })();
   function blank() {
-    return { on: false, dur: 60, t0: 0, t1: 0, ids: [], acc: {}, b: { all: {}, off: {}, run: {}, hot: {}, idle: {} }, ctxT: {}, ev: [], reads: 0, rate: 0, ctx: { eng: 'unk', mot: 'unk' }, rep: null, stale: {}, unsup: [] };
+    return { on: false, dur: 60, t0: 0, t1: 0, ids: [], acc: {}, b: { all: {}, off: {}, run: {}, hot: {}, idle: {} }, ctxT: {}, ev: [], reads: 0, rate: 0, ctx: { eng: 'unk', mot: 'unk' }, rep: null, stale: {}, unsup: [], skipped: [], prob: false };
   }
   var st = blank();
   function emit() { subs.forEach(function (f) { try { f(); } catch (e) {} }); }
@@ -80,12 +82,13 @@ window.LiveDiag = (function () {
   function start(dur) {
     if (S.state !== 'ecu') throw new Error('Real ECU-ya qoşulmamısınız.');
     var sup = OBD.supported;
-    var ids = PRI.filter(function (p) { return sup.indexOf(p) >= 0 && window.PIDS[p]; }).slice(0, 12);
+    var avail = PRI.filter(function (p) { return sup.indexOf(p) >= 0 && window.PIDS[p]; });
+    var ids = avail.slice(0, MAXP), skipped = avail.slice(MAXP);
     var unsup = PRI.filter(function (p) { return sup.indexOf(p) < 0 && window.PIDS[p]; });
-    st = blank(); st.dur = dur; st.ids = ids.concat(['RV']); st.unsup = unsup; st.t0 = Date.now(); st.on = true;
+    st = blank(); st.dur = dur; st.ids = ids.concat(['RV']); st.unsup = unsup; st.skipped = skipped; st.t0 = Date.now(); st.on = true;
     OBD.startPoll(st.ids);
     clearInterval(timer); timer = setInterval(tick, 1000);
-    ev('Diaqnostika başladı: ' + st.ids.length + ' göstərici sorğulanır');
+    ev('Diaqnostika başladı: ' + st.ids.length + ' göstərici sorğulanır' + (skipped.length ? ' (yük limiti səbəbilə ' + skipped.length + ' göstərici sorğulanmır)' : ''));
     emit();
   }
   function stop(auto) {
@@ -100,9 +103,9 @@ window.LiveDiag = (function () {
   OBD.on(function (type) {
     if (type === 'value') { onValue(); return; }
     if (!st.on) return;
-    if (S.state === 'reconnecting' || S.state === 'elm') ev('Əlaqə problemi: ' + S.state);
+    if (S.state === 'reconnecting' || S.state === 'elm') { st.prob = true; ev('Əlaqə problemi: ' + S.state); }
     else if (S.state === 'error' || S.state === 'idle') { ev('Əlaqə kəsildi'); stop(true); }
-    else if (S.state === 'ecu') ev('Əlaqə bərpa olundu');
+    else if (S.state === 'ecu' && st.prob) { st.prob = false; ev('Əlaqə bərpa olundu'); }
     emit();
   });
 
@@ -197,7 +200,14 @@ window.LiveDiag = (function () {
     var codes = [];
     var d = window.Session && Session.ctx.dtc;
     if (d) ['stored', 'pending', 'permanent'].forEach(function (k) { if (d[k] && d[k].ok) d[k].codes.forEach(function (c) { if (codes.indexOf(c) < 0) codes.push(c); }); });
-    if (codes.length) probs.push({ prio: 'Yüksək', title: 'ECU-da xəta kodu var: ' + codes.join(', '), it: null });
+    var codeInfo = codes.map(function (c) {
+      var e = window.DTC_DB ? window.DTC_DB[c] : null;
+      return { code: c, name: e ? (e.az || e.en || '') : '', family: !!(e && e.family), causes: e && e.causes ? e.causes.slice(0, 4) : [], check: e && e.check ? e.check.slice(0, 3) : [] };
+    });
+    if (codes.length) probs.push({ prio: 'Yüksək', title: 'ECU-da xəta kodu var: ' + codeInfo.map(function (c) { return c.code + (c.name ? ' (' + c.name + ')' : ''); }).join('; '), it: null });
+    if (st.skipped && st.skipped.length) probs.push({ prio: 'Aşağı', title: 'Yük limiti səbəbilə sorğulanmayan göstəricilər: ' + st.skipped.join(' '), it: null });
+    var ai = null;
+    try { ai = AIRules.analyze(OBD.values, d || null); } catch (x) { ai = null; }
     var nodata = st.ids.filter(function (id) { return !A(id); });
     if (nodata.length) probs.push({ prio: 'Müşahidə edilməlidir', title: 'ECU-dan cavab gəlməyən göstəricilər: ' + nodata.join(', '), it: null });
     if (el < 60) probs.push({ prio: 'Aşağı', title: 'Test qısa olub (' + el + ' san): qiymətləndirmə məhduddur', it: null });
@@ -208,16 +218,17 @@ window.LiveDiag = (function () {
     var ctxs = Object.keys(st.ctxT).map(function (k) { return { k: k, s: st.ctxT[k] }; });
     var concl = !items.length ? 'Kifayət qədər məlumat toplanmadı.' :
       items.length + ' göstərici təhlil edildi: ' + cnt.N + ' normal, ' + cnt.S + ' şübhəli, ' + cnt.P + ' problem ehtimalı, ' + cnt.U + ' üçün məlumat kifayət deyil.' +
-      (probs.filter(function (p) { return p.it; }).length ? ' Diqqət tələb edən: ' + probs.filter(function (p) { return p.it; }).slice(0, 3).map(function (p) { return p.it.name; }).join('; ') + '.' : ' Ölçülmüş məlumatda aydın sapma aşkarlanmadı.') +
-      ' Bu nəticə yalnız ölçülmüş məlumata əsaslanır və qəti diaqnoz deyil.';
-    return { items: items, probs: probs, codes: codes, cnt: cnt, el: el, ctxs: ctxs, ev: st.ev.slice(), reads: st.reads, rate: st.rate, nodata: nodata, unsup: st.unsup, concl: concl, t: new Date(st.t0).toISOString() };
+      (probs.filter(function (p) { return p.it; }).length ? ' Diqqət tələb edən: ' + probs.filter(function (p) { return p.it; }).slice(0, 3).map(function (p) { return p.it.name; }).join('; ') + '.' : ' Ölçülmüş canlı məlumatda aydın sapma aşkarlanmadı.');
+    concl += codes.length ? ' ECU-da xəta kodu var: ' + codes.join(', ') + '. Canlı göstəricilərin normal olması kodu ləğv etmir.' : (d ? '' : ' Xəta kodları oxunmayıb, bu hesabat kodların olmadığını göstərmir.');
+    concl += ' Bu nəticə yalnız ölçülmüş məlumata əsaslanır və qəti diaqnoz deyil.';
+    return { items: items, probs: probs, codes: codes, cnt: cnt, el: el, ctxs: ctxs, ev: st.ev.slice(), reads: st.reads, rate: st.rate, nodata: nodata, unsup: st.unsup, skipped: st.skipped || [], codeInfo: codeInfo, ai: ai, concl: concl, t: new Date(st.t0).toISOString() };
   }
   function fmt(it) { return it.avg === undefined || it.avg === null ? '—' : it.avg.toFixed(it.fix) + ' ' + it.unit + ' (min ' + it.min.toFixed(it.fix) + ', maks ' + it.max.toFixed(it.fix) + ')'; }
   function text(rep, ctx) {
     var o = [], v = ctx && ctx.vin, S0 = S;
     o.push('AC OBD — Canlı diaqnostika hesabatı', '');
     o.push('1. Avtomobil: ' + (ctx && ctx.veh ? ctx.veh : '—') + (v ? ' | VIN (ECU-dan oxunub): ' + v : ' | VIN oxunmayıb'));
-    o.push('2. Tarix: ' + rep.t.replace('T', ' ').slice(0, 19) + ' | Müddət: ' + rep.el + ' san');
+    o.push('2. Tarix: ' + LocalTime.full(rep.t) + ' | Müddət: ' + rep.el + ' san');
     o.push('3. Adapter: ' + (S0.deviceName || '—') + ' | ' + (S0.elmVersion || '—') + ' | Protokol: ' + (S0.protocol || '—'));
     o.push('4. İş rejimi (saniyə): ' + (rep.ctxs.length ? rep.ctxs.map(function (c) { return c.k + '=' + c.s; }).join(', ') : '—'));
     o.push('5. Oxunan PID: ' + (rep.items.length) + ' | Oxuma: ' + rep.reads + ', tezlik ~' + rep.rate.toFixed(1) + '/san | Cavabsız: ' + (rep.nodata.join(', ') || 'yoxdur'));
@@ -232,10 +243,17 @@ window.LiveDiag = (function () {
     rep.probs.forEach(function (p) { o.push('  [' + p.prio + '] ' + p.title); if (p.it && p.it.rng) o.push('      Gözlənilən: ' + p.it.rng); if (p.it && p.it.note) o.push('      Qeyd: ' + p.it.note); });
     o.push('', '9. Mümkün səbəblər:');
     var cs = []; rep.probs.forEach(function (p) { if (p.it) p.it.causes.forEach(function (c) { if (cs.indexOf(c) < 0) cs.push(c); }); });
+    (rep.codeInfo || []).forEach(function (ci) { ci.causes.forEach(function (c) { cs.push(ci.code + (ci.family ? ' (ailə üzrə ümumi)' : '') + ': ' + c); }); });
     (cs.length ? cs : ['—']).forEach(function (c) { o.push('  - ' + c); });
     o.push('', '10. Tövsiyə olunan yoxlamalar:');
     var ck = []; rep.probs.forEach(function (p) { if (p.it) p.it.check.forEach(function (c) { if (ck.indexOf(c) < 0) ck.push(c); }); });
+    (rep.codeInfo || []).forEach(function (ci) { ci.check.forEach(function (c) { ck.push(ci.code + ': ' + c); }); });
     (ck.length ? ck : ['—']).forEach(function (c) { o.push('  - ' + c); });
+    if (rep.ai && (rep.ai.hyps.length || rep.ai.safety.length)) {
+      o.push('', 'Qaydalarla ehtimal təhlili (qəti diaqnoz deyil):');
+      rep.ai.hyps.forEach(function (h) { o.push('  * ' + AIRules.name(h.key) + ' [' + h.level + ']'); h.ev.forEach(function (e) { o.push('      ' + e); }); });
+      rep.ai.safety.forEach(function (s) { o.push('  ! ' + s); });
+    }
     o.push('', '11. Xəta kodları: ' + (rep.codes.join(', ') || 'oxunmayıb və ya yoxdur'));
     o.push('', '12. Ümumi nəticə: ' + rep.concl);
     if (rep.ev.length) { o.push('', 'Hadisələr:'); rep.ev.forEach(function (e) { o.push('  ' + e.s + ' s: ' + e.t); }); }
