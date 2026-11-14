@@ -17,7 +17,7 @@ window.OBD = (function () {
     for (var i = 0; i < lines.length; i++) {
       var s = lines[i].replace(/\s/g, '').toUpperCase();
       var k = s.indexOf(want);
-      if (k >= 0) {
+      if (k === 0) {
         var h = s.substr(k + 4), out = [];
         for (var j = 0; j + 1 < h.length; j += 2) {
           var n = parseInt(h.substr(j, 2), 16);
@@ -117,6 +117,8 @@ window.OBD = (function () {
 
   async function connect(id, name) {
     S.user = false; S.deviceId = id; S.deviceName = name || id;
+    // başqa avtomobil ola bilər: əvvəlki avtomobilin kodları və VIN qalmasın
+    if (window.Session) { Session.ctx.dtc = null; Session.ctx.freeze = null; Session.ctx.vin = ''; Session.ctx.cal = ''; }
     S.error = ''; S.elmVersion = ''; S.protocol = ''; S.supported = []; S.values = {};
     setState('connecting');
     try {
