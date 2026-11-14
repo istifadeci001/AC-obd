@@ -51,6 +51,7 @@ window.AIRules = (function () {
     var A = { symptoms: [], anomalies: [], hyps: [], missing: [], next: [], fix: [], safety: [], n: 0 };
     var H = {};
     V = V || {};
+
     function hs(id) { return (V[id] && V[id].hist) ? V[id].hist : []; }
     function ok(id, n) { return hs(id).length >= (n || 5); }
     function add(k, p, ev) { var x = H[k] || (H[k] = { key: k, score: 0, ev: [] }); x.score += p; x.ev.push(ev); }
@@ -105,7 +106,7 @@ window.AIRules = (function () {
     if (vId && ok('0C')) {
       var rl = hs('0C');
       if (rl[rl.length - 1] > 500) {
-        var vv = avg(hs(vId)), src = vId === 'RV' ? 'adapter ölçüsü' : 'ECU';
+        var vv = avg(hs(vId).slice(-30)), src = vId === 'RV' ? 'adapter ölçüsü' : 'ECU';
         if (vv < 13.0) { an('vlow', 'Mühərrik işləyərkən gərginlik aşağıdır: ' + vv.toFixed(2) + ' V (' + src + ')'); add('charge', 2, 'Gərginlik ' + vv.toFixed(2) + ' V (' + src + ')'); add('comm', 1, 'Gərginlik ' + vv.toFixed(2) + ' V'); }
         if (vv > 15.0) { an('vhigh', 'Gərginlik yüksəkdir: ' + vv.toFixed(2) + ' V'); add('overv', 2, 'Gərginlik ' + vv.toFixed(2) + ' V'); }
       }
@@ -114,7 +115,9 @@ window.AIRules = (function () {
     if (ok('14', 20)) {
       var fr = rng(hs('14'));
       if (fr < 0.3) { an('o2f', 'Ön O2 sensoru az dəyişir (aralıq ' + fr.toFixed(2) + ' V). Soyuq/açıq döngə də ola bilər'); add('o2', 1, 'Ön O2 aralığı ' + fr.toFixed(2) + ' V'); }
-      if (ok('15', 20)) {
+      var pm = window.Adapter && Adapter.map ? Adapter.map() : null;
+      // ön/arxa müqayisə yalnız sensor mövqeləri (PID 13/1D) təsdiqlənibsə etibarlıdır
+      if (ok('15', 20) && pm && pm.scheme) {
         var rr2 = rng(hs('15'));
         if (fr > 0.4 && rr2 > 0.5 * fr) {
           an('cat', 'Arxa O2 dalğalanması ön sensora yaxındır (arxa ' + rr2.toFixed(2) + ' V, ön ' + fr.toFixed(2) + ' V)');
@@ -155,7 +158,7 @@ window.AIRules = (function () {
       if (!ok(p[0])) A.missing.push(p[1] + ' (dəstəklənmir, seçilməyib və ya kifayət qədər nümunə yoxdur)');
     });
     if (!dtc) A.missing.push('Xəta kodları oxunmayıb');
-    A.missing.push('Misfire sayğacları və Mode 06 nəticələri bu versiyada oxunmur');
+    A.missing.push('Misfire sayğacları və Mode 06 nəticələri bu təhlilə daxil edilmir (Mode 06 yalnız xam göstərilir)');
     A.safety.push('Bu ehtimal təhlilidir, qəti diaqnoz deyil. Detalı yalnız ölçmə ilə təsdiqləndikdən sonra dəyişin.');
     return A;
   }
