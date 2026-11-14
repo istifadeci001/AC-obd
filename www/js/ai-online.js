@@ -30,6 +30,7 @@ window.AIOnline = (function () {
       headers = { 'content-type': 'application/json', 'authorization': 'Bearer ' + key };
       body = { model: c.model, messages: [{ role: 'system', content: SYS }, { role: 'user', content: prompt }] };
     }
+    if (!/^https:\/\//i.test(url)) throw new Error('Ünvan https:// ilə başlamalıdır (açar şifrəsiz göndərilməsin).');
     var r = await fetch(url, { method: 'POST', headers: headers, body: JSON.stringify(body) });
     var txt = await r.text(), data = null;
     try { data = JSON.parse(txt); } catch (e) {}
@@ -43,5 +44,6 @@ window.AIOnline = (function () {
     if (!out) throw new Error('Boş cavab alındı.');
     return out;
   }
-  return { buildPrompt: buildPrompt, ask: ask, setKey: setKey, clearKey: clearKey, hasKey: function () { return !!getKey(); }, persisted: function () { return !!Store.get('ai_key', ''); } };
+  function target() { var c = cfg(); return c.provider === 'anthropic' ? 'https://api.anthropic.com/v1/messages' : c.endpoint; }
+  return { target: target, buildPrompt: buildPrompt, ask: ask, setKey: setKey, clearKey: clearKey, hasKey: function () { return !!getKey(); }, persisted: function () { return !!Store.get('ai_key', ''); } };
 })();
