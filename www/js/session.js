@@ -132,7 +132,7 @@ window.Session = (function () {
     var L = LB[lang] || LB.az, o = [];
     function codesOf(r) { return r ? (r.ok ? (r.codes.length ? r.codes.join(', ') : '-') : L.none) : L.none; }
     o.push(L.title, '='.repeat(L.title.length));
-    o.push(L.date + ': ' + s.t.replace('T', ' ').slice(0, 19));
+    o.push(L.date + ': ' + LocalTime.full(s.t));
     var v = s.vehicle;
     o.push(L.veh + ': ' + (v ? [v.make, v.model, v.year, v.engine, v.fuel, v.trans].filter(Boolean).join(' ') : '-'));
     o.push(L.vin + ': ' + (s.vin || '-'));
@@ -147,6 +147,7 @@ window.Session = (function () {
       o.push('  DTC: ' + s.freeze.dtc);
       Object.keys(s.freeze.pids).forEach(function (id) {
         var p = window.PIDS[id];
+        if (!p) return;
         o.push('  ' + (lang === 'en' ? p.en : p.az) + ': ' + s.freeze.pids[id].v.toFixed(p.fix) + ' ' + p.unit);
       });
     } else o.push('  ' + L.none);
@@ -155,6 +156,7 @@ window.Session = (function () {
     if (!ids.length) o.push('  ' + L.none);
     ids.forEach(function (id) {
       var p = window.PIDS[id], x = s.stats[id];
+      if (!p) return;
       o.push('  ' + (lang === 'en' ? p.en : p.az) + ': ' + x.avg.toFixed(p.fix) + ' / ' + x.min.toFixed(p.fix) + ' / ' + x.max.toFixed(p.fix) + ' ' + p.unit);
     });
     if (s.n) o.push('  ' + L.rec + ': ' + s.n);
