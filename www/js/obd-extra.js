@@ -55,10 +55,21 @@
     return b.length ? b : null;
   }
 
+  // protokol bilinmirsə CAN sayğac baytı kod kimi oxunar (səhv kodlar). Əvvəl protokolu dəqiqləşdiririk.
+  async function protoKind() {
+    var unk = function () { return !S.protocol || /^\s*AUTO\s*,?\s*$/i.test(S.protocol); };
+    if (unk()) {
+      try { var dp = await ELM.send('ATDP', 2500); S.protocol = dp.join(' '); } catch (e) {}
+    }
+    if (unk()) return 'unknown';
+    return /CAN|15765/i.test(S.protocol) ? 'can' : 'other';
+  }
   async function readDtcs(mode) {
+    var kind = await protoKind();
+    if (kind === 'unknown') return { ok: false, codes: [], status: 'protokol bilinmir, kodlar səhv oxunmasın deyə oxuma edilmədi' };
     var r = await raw(mode, 9000);
     var resp = ('0' + (parseInt(mode, 16) + 0x40).toString(16)).slice(-2).toUpperCase();
-    var isCan = /CAN/i.test(S.protocol || '');
+    var isCan = kind === 'can';
     var got = false, codes = [];
     r.msgs.forEach(function (x) {
       if (x.indexOf(resp) !== 0) return;
@@ -122,7 +133,8 @@
   async function mode09(pid) {
     var r = await raw('09' + pid, 10000), pre = '49' + pid, b = [];
     r.msgs.forEach(function (s) {
-      b = b.concat(bytesOf(s.indexOf(pre) === 0 ? s.slice(6) : s));
+      if (s.indexOf(pre) !== 0) return; // başqa cavab sətirləri VIN-ə qarışmasın
+      b = b.concat(bytesOf(s.slice(6)));
     });
     return b.filter(function (n) { return n >= 32 && n < 127; })
       .map(function (n) { return String.fromCharCode(n); }).join('');
@@ -132,6 +144,8 @@
     try { vin = await mode09('02'); } catch (e) { Log.add('ERR', 'VIN: ' + e.message); }
     try { cal = await mode09('04'); } catch (e) { Log.add('ERR', 'CAL: ' + e.message); }
     if (vin.length > 17) vin = vin.slice(-17);
+    vin = vin.toUpperCase();
+    if (vin && !/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) { Log.add('ERR', 'VIN formatı yanlışdır (' + vin.length + ' simvol), qəbul edilmədi'); vin = ''; }
     return { vin: vin, cal: cal };
   }
 
@@ -157,7 +171,10 @@
     add('Misfire (yanma buraxma)', B & 1, B & 16);
     add('Fuel System (yanacaq sistemi)', B & 2, B & 32);
     add('Components (komponentlər)', B & 4, B & 64);
-    if (!res.diesel) {
+    if (res.diesel) {
+      ['NMHC katalizator', 'NOx/SCR işləmə sonrası', null, 'Təzyiq artırma (boost)', null, 'Egzoz qaz sensoru', 'PM filtri', 'EGR/VVT']
+        .forEach(function (n, k) { if (n) add(n, (C >> k) & 1, (D >> k) & 1); });
+    } else {
       ['Catalyst (katalizator)', 'Heated Catalyst (isidilən katalizator)', 'EVAP (yanacaq buxarı)', 'Secondary Air (ikinci hava)', 'A/C Refrigerant (kondisioner)', 'O2 Sensor (oksigen sensoru)', 'O2 Sensor Heater (O2 qızdırıcı)', 'EGR/VVT']
         .forEach(function (n, k) { add(n, (C >> k) & 1, (D >> k) & 1); });
     }
@@ -184,8 +201,11 @@
       if (x.indexOf('46' + id) !== 0) return;
       var b = bytesOf(x.slice(4));
       for (var i = 0; i + 7 < b.length; i += 8) {
-        var v = b[i + 2] * 256 + b[i + 3], mn = b[i + 4] * 256 + b[i + 5], mx = b[i + 6] * 256 + b[i + 7];
-        tests.push({ tid: b[i], unit: b[i + 1], v: v, mn: mn, mx: mx, ok: v >= mn && v <= mx });
+        // J1979: UASID >= 0x80 işarəli (signed) 16-bit dəyərdir
+        var sg = b[i + 1] >= 0x80;
+        var u16 = function (h, l) { var n = h * 256 + l; return sg && n > 32767 ? n - 65536 : n; };
+        var v = u16(b[i + 2], b[i + 3]), mn = u16(b[i + 4], b[i + 5]), mx = u16(b[i + 6], b[i + 7]);
+        tests.push({ tid: b[i], unit: b[i + 1], v: v, mn: mn, mx: mx, signed: sg, ok: v >= mn && v <= mx });
       }
     });
     return { mid: mid, tests: tests };
