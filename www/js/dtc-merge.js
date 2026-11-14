@@ -14,7 +14,7 @@
     return {
       en: b.t,
       az: own ? p.az : (x ? x.t : (lg === 'az' ? b.t + ' (İngilis texniki adı; Azərbaycan tərcüməsi yoxdur)' : b.t)),
-      desc: x ? x.d : b.d,
+      desc: (x && x.d && x.d.trim()) ? x.d : b.d,
       flags: b.f, diff: b.u, src: b.w, rev: b.v, big: true, translated: !!x, own: has, family: false,
       causes: (own && p.causes && p.causes.length) ? p.causes : (causesTr || causesEn),
       symptoms: (own && p.symptoms && p.symptoms.length) ? p.symptoms : (x && x.s && x.s.length === b.s.length ? x.s : b.s),
