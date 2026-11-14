@@ -4,9 +4,10 @@ window.Report = (function () {
   function avg(a) { if (!a || !a.length) return null; var s = 0; a.forEach(function (x) { s += x; }); return s / a.length; }
   function val(id) { var r = OBD.values[id]; return (r && r.v !== null && !r.nodata) ? r : null; }
 
+  function fresh(r) { return !!(r && r.t && Date.now() - r.t < 10000); }
   function mode() {
     var rpm = val('0C'), spd = val('0D'), ld = val('04');
-    if (!rpm) return 'Müəyyən edilə bilmədi (RPM oxunmur)';
+    if (!rpm || !fresh(rpm)) return 'Müəyyən edilə bilmədi (RPM oxunmur və ya oxuma dayanıb)';
     if (rpm.v < 300) return 'Mühərrik söndürülüb (RPM ' + f(rpm.v, 0) + ')';
     if (spd && spd.v > 2) return 'Hərəkətdə (' + f(spd.v, 0) + ' km/h, RPM ' + f(rpm.v, 0) + ')';
     if (rpm.v < 1100 && (!ld || ld.v < 40)) return 'Boşda işləyir (RPM ' + f(rpm.v, 0) + (ld ? ', yük ' + f(ld.v, 0) + ' %' : '') + ')';
@@ -33,8 +34,11 @@ window.Report = (function () {
     });
     var v = val('42') || val('RV');
     if (v) {
-      if (run && v.min < 13.0) add('ŞÜBHƏLİ', 'Mühərrik işləyərkən gərginlik minimum ' + f(v.min, 2) + ' V (şarj aşağıdır).', 'Akkumulyator klemmaları, generator şarjı, qayış yoxlanmalıdır.');
-      if (v.max > 15.2) add('ŞÜBHƏLİ', 'Gərginlik ' + f(v.max, 2) + ' V-a qalxıb (yüksəkdir).', 'Generator reqlyatoru yoxlanmalıdır.');
+      // yalnız son nümunələr: starter və söndürülü mühərrik dövrü hesaba qatılmır
+      var vh = v.hist.slice(-30), vmin = Math.min.apply(null, vh), vmax = Math.max.apply(null, vh);
+      var rtm = val('1F'), settled = run && vh.length >= 10 && (!rtm || rtm.v >= 30);
+      if (settled && vmin < 13.0) add('ŞÜBHƏLİ', 'Mühərrik işləyərkən son nümunələrdə gərginlik minimum ' + f(vmin, 2) + ' V (şarj aşağıdır).', 'Akkumulyator klemmaları, generator şarjı, qayış yoxlanmalıdır.');
+      if (settled && vmax > 15.2) add('ŞÜBHƏLİ', 'Gərginlik ' + f(vmax, 2) + ' V-a qalxıb (yüksəkdir).', 'Generator reqlyatoru yoxlanmalıdır.');
       if (!run && v.v < 12.0) add('MƏLUMAT', 'Mühərrik söndürülüb, gərginlik ' + f(v.v, 2) + ' V.', 'Akkumulyator yükünü ölçün.');
     }
     ['14', '15'].forEach(function (id) {
@@ -66,14 +70,29 @@ window.Report = (function () {
     L.push('=== MÜHƏRRİKİN İŞ REJİMİ ===');
     L.push(mode());
     L.push('');
+    L.push('=== XƏTA KODLARI ===');
+    var dd = window.Session && Session.ctx.dtc, codesAll = [];
+    if (!dd) L.push('Kodlar oxunmayıb (Xəta kodları bölməsində "Bütün kodları oxu" basın).');
+    else {
+      [['Saxlanmış (03)', dd.stored], ['Gözləyən (07)', dd.pending], ['Daimi (0A)', dd.permanent]].forEach(function (x) {
+        var r = x[1];
+        L.push(x[0] + ': ' + (r && r.ok ? (r.codes.length ? r.codes.join(', ') : 'yoxdur') : 'oxunmadı (' + ((r && r.status) || 'cavab yoxdur') + ')'));
+        if (r && r.ok) r.codes.forEach(function (c) { if (codesAll.indexOf(c) < 0) codesAll.push(c); });
+      });
+      codesAll.forEach(function (c) { var e = window.DTC_DB && window.DTC_DB[c]; if (e) L.push('  ' + c + ': ' + (e.en || e.az || '')); });
+      L.push('Oxunma vaxtı: ' + (window.LocalTime ? LocalTime.full(dd.t) : dd.t));
+      var fz = window.Session && Session.ctx.freeze;
+      if (fz && fz.dtc) L.push('Freeze Frame kodu: ' + fz.dtc);
+    }
+    L.push('');
     L.push('=== CANLI DƏYƏRLƏR ===');
     var ids = Object.keys(OBD.values), real = 0, nod = [];
     ids.forEach(function (id) {
       var r = OBD.values[id], p = PIDS[id]; if (!p) return;
       if (r.v === null) { nod.push(id); return; }
       real++;
-      var d = p.fix === undefined ? 1 : p.fix;
-      L.push(id + ' ' + p.en + ': son ' + (r.txt || f(r.v, d)) + ' ' + p.unit + ' | min ' + f(r.min, d) + ' | maks ' + f(r.max, d) + ' | orta ' + f(avg(r.hist), d) + ' | nümunə ' + r.hist.length);
+      var d = p.fix === undefined ? 1 : p.fix, old = r.t && Date.now() - r.t > 10000;
+      L.push(id + ' ' + p.en + (old ? ' [KÖHNƏ: oxuma dayanıb]' : '') + ': son ' + (r.txt || f(r.v, d)) + ' ' + p.unit + ' | min ' + f(r.min, d) + ' | maks ' + f(r.max, d) + ' | orta ' + f(avg(r.hist), d) + ' | nümunə ' + r.hist.length);
     });
     if (!real) L.push('Real dəyər oxunmayıb. Əvvəl Canlı bölməsində "Başlat" basın.');
     L.push('');
@@ -84,7 +103,7 @@ window.Report = (function () {
     L.push('');
     L.push('=== VERİLƏNLƏRİN ETİBARLILIĞI ===');
     L.push('Real oxunan PID: ' + real + ' | Cavabsız: ' + (nod.join(' ') || 'yoxdur'));
-    L.push('Bu versiyada DTC (Mode 03/07/0A), Freeze Frame və Mode 06 OXUNMUR. Yəni xəta kodu olmaması bu hesabatdan çıxarıla bilməz.');
+    L.push(dd ? 'Kodlar oxunub (yuxarıya baxın). Mode 06 bu hesabata daxil edilmir.' : 'Kodlar oxunmayıb: xəta kodu olmaması bu hesabatdan çıxarıla bilməz.');
     L.push('Dekodlaşdırılmayan və ya dəstəklənməyən göstəricilər normal/nasaz kimi təqdim edilmir.');
     extra.forEach(function (e) {
       try { var t = e.fn(); if (t) { L.push(''); L.push('=== ' + e.title + ' ==='); L.push(t); } } catch (x) { L.push('(' + e.title + ' xətası: ' + x.message + ')'); }
@@ -93,10 +112,11 @@ window.Report = (function () {
     L.push('=== YEKUN QİYMƏTLƏNDİRMƏ ===');
     if (!real) L.push('Qiymətləndirmə mümkün deyil: canlı məlumat yoxdur.');
     else if (sus) L.push(sus + ' şübhəli göstərici var. Yuxarıdakı yoxlama addımlarına baxın. Yalnız canlı PID əsasında ehtimaldır.');
-    else L.push('Oxunan PID-lərdə açıq nasazlıq əlaməti yoxdur. Bu, maşının tam sağlam olduğunu göstərmir (DTC/Mode 06 yoxlanmayıb).');
+    else L.push('Oxunan PID-lərdə açıq nasazlıq əlaməti yoxdur. Bu, maşının tam sağlam olduğunu göstərmir (Mode 06 yoxlanmayıb).');
+    if (codesAll.length) L.push('DİQQƏT: ECU-da xəta kodları var: ' + codesAll.join(', ') + '. Canlı göstəricilərin normal olması kodu ləğv etmir.');
     L.push('');
     L.push('=== ADAPTER JURNALI (son 150 sətir) ===');
-    L.push(Log.all().slice(-150).join('\n'));
+    L.push(Log.safe(150).join('\n'));
     return L.join('\n');
   }
 
