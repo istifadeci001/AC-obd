@@ -13,7 +13,8 @@
         var p = Adapter.pos(id);
         if (!rear && p && p.present && p.pos === 'B1S2' && Adapter.kind(id) === 'narrow') rear = id;
       });
-      if (rear && h(rear).length >= 20) {
+      var dup = A.anomalies.some(function (a) { return a.k === 'cat'; }); // eyni arxa O2 sübutu ikinci dəfə sayılmasın
+      if (rear && h(rear).length >= 20 && !dup) {
         var r = h(rear), rr = Math.max.apply(null, r) - Math.min.apply(null, r);
         if (rr > 0.6) {
           var ev = 'Arxa O2 (B1S2, PID ' + rear + ') gərginliyi çox dəyişir (aralıq ' + rr.toFixed(2) + ' V): katalizatorun oksigen saxlamaması mümkündür. Hədd yoxlanmayıb';
