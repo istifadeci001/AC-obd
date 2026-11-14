@@ -1,5 +1,5 @@
 window.Fuel = (function () {
-  var S = OBD.S, timer = null, ticks = 0, subs = [], T = null;
+  var S = OBD.S, timer = null, ticks = 0, subs = [], T = null, lastTick = 0;
   (function () {
     var P = window.PIDS;
     var T = { 1: 'Benzin', 2: 'Metanol', 3: 'Etanol', 4: 'Dizel', 5: 'LPG', 6: 'CNG', 7: 'Propan', 8: 'Elektrik', 9: 'Bi-fuel benzin', 17: 'Hibrid benzin' };
@@ -34,11 +34,14 @@ window.Fuel = (function () {
     return { lph: lph, method: m, conf: conf, spd: spd, lp100: (spd !== null && spd > 5) ? lph / spd * 100 : null };
   }
   function tick() {
+    // fon rejimində taymer ləngiyə bilər: real keçən vaxtı götürürük (ən çox 5 san)
+    var now = Date.now(), dt = lastTick ? Math.min(5, (now - lastTick) / 1000) : 1;
+    lastTick = now;
     var e = estimate();
     if (!e) return;
     var t = getT();
-    t.L += e.lph / 3600; t.sec += 1;
-    if (e.spd !== null) t.km += e.spd / 3600;
+    t.L += e.lph / 3600 * dt; t.sec += dt;
+    if (e.spd !== null) t.km += e.spd / 3600 * dt;
     var lt = fresh('07'), ct = fresh('05');
     if (lt !== null && ct !== null && ct >= 80) { t.lt += lt; t.ltn++; }
     ticks++;
@@ -50,29 +53,42 @@ window.Fuel = (function () {
     if (S.state !== 'ecu') throw new Error('Real ECU-ya qoşulmamısınız.');
     var ids = IDS.filter(function (p) { return OBD.supported.indexOf(p) >= 0 && window.PIDS[p]; });
     ids.push('RV');
-    T = null;
+    T = null; lastTick = 0;
     OBD.startPoll(ids);
     clearInterval(timer); timer = setInterval(tick, 1000);
   }
-  function stop() { clearInterval(timer); timer = null; Store.set('fueltrip', getT()); T = null; try { OBD.stopPoll(); } catch (e) {} }
+  function stop() { clearInterval(timer); timer = null; lastTick = 0; Store.set('fueltrip', getT()); T = null; try { OBD.stopPoll(); } catch (e) {} }
   function tank() {
     var p = fresh('2F', 60000), c = cfg();
     if (p === null) return null;
     return { pct: p, L: c.cap ? p * c.cap / 100 : null };
   }
+  // Kalibrasiya yalnız "tam dolumdan tam dolumadək" aralıqda aparılır.
+  // Yarımçıq dolumlar toplanır, səfər sıfırlanmır.
   function fill(liters, full) {
     var t = getT(), c = cfg(), fills = Store.get('fuelfills', []);
+    var part = Store.get('fuelpart', 0), base = Store.get('fuelbase', false);
     var e = { t: new Date().toISOString(), added: liters, estL: t.L, km: t.km, ltft: t.ltn ? t.lt / t.ltn : null, full: !!full };
-    if (full && t.L > 0.5 && c.k > 0) {
-      var raw = t.L / c.k, nk = liters / raw;
-      c.k = Math.max(0.6, Math.min(1.6, nk));
-      Store.set('fuelcfg', c);
-      e.newK = c.k;
+    if (!full) {
+      Store.set('fuelpart', part + liters);
+      e.note = ' Yarımçıq dolum: litr toplanır, səfər davam edir. Kalibrasiya yalnız tam dolumda aparılır.';
+    } else {
+      var total = liters + part;
+      e.total = total;
+      if (!base) e.note = ' Bu tam dolum başlanğıc nöqtəsi kimi qəbul edildi. Kalibrasiya növbəti tam dolumdan başlayır.';
+      else if (t.km < 20) e.note = ' Kalibrasiya aparılmadı: ən azı 20 km hesablanmış sürüş lazımdır (indi ' + t.km.toFixed(1) + ' km).';
+      else if (t.L > 0.5 && c.k > 0) {
+        var raw = t.L / c.k, nk = total / raw, cl = Math.max(0.6, Math.min(1.6, nk));
+        e.newK = cl; e.rawK = nk; e.clamped = cl !== nk;
+        c.k = cl; Store.set('fuelcfg', c);
+      } else e.note = ' Kalibrasiya aparılmadı: hesablanmış sərf kifayət deyil (≥0.5 L).';
+      Store.set('fuelbase', true);
+      Store.set('fuelpart', 0);
+      Store.set('fueltrip', { L: 0, km: 0, sec: 0, lt: 0, ltn: 0 });
+      T = null;
     }
     fills.unshift(e);
     Store.set('fuelfills', fills.slice(0, 30));
-    Store.set('fueltrip', { L: 0, km: 0, sec: 0, lt: 0, ltn: 0 });
-    T = null;
     return e;
   }
   function quality() {
