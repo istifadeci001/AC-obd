@@ -145,6 +145,7 @@
         b = row('DTC', f.dtc);
         Object.keys(f.pids).forEach(function (id) {
           var p = window.PIDS[id];
+          if (!p) return;
           b += row(L() === 'en' ? p.en : p.az, f.pids[id].v.toFixed(p.fix) + ' ' + p.unit);
         });
         if (!Object.keys(f.pids).length) b += '<p class="sm">' + esc(T('Dəyərlər oxunmadı: ECU Freeze Frame PID-lərini vermədi.', 'No values read: the ECU returned no Freeze Frame PIDs.')) + '</p>';
@@ -220,7 +221,7 @@
       row(T('Canlı oxuma', 'Live reading'), OBD.polling ? T('işləyir', 'running') : T('yoxdur', 'off'), OBD.polling ? 'ok' : 'no') +
       (mon.on ? btn(T('Dayandır', 'Stop'), 'mstop', '', 'del') : btn(T('Başlat', 'Start'), 'mstart', '')));
     h += card('<label>' + esc(T('Hadisələr', 'Events')) + '</label>' +
-      (ev.length ? ev.map(function (e) { return '<div class="row"><span>' + esc(e.text) + '</span><span class="sm">' + esc(e.t.slice(11, 19)) + '</span></div>'; }).join('') : '<p class="sm">—</p>') +
+      (ev.length ? ev.map(function (e) { return '<div class="row"><span>' + esc(e.text) + '</span><span class="sm">' + esc(LocalTime.time(e.t)) + '</span></div>'; }).join('') : '<p class="sm">—</p>') +
       (ev.length ? btn(T('Hadisələri təmizlə', 'Clear events'), 'mclear', '', 'alt') : ''));
     h += card('<label>' + esc(T('Test nəticəsini saxla (əvvəl/sonra müqayisə üçün)', 'Save test result (for before/after comparison)')) + '</label>' +
       '<input id="tlabel" placeholder="' + esc(T('Məs. Soyuq start', 'e.g. Cold start')) + '">' +
@@ -231,6 +232,7 @@
         btn(T('Müqayisə et (B − A orta)', 'Compare (B − A average)'), 'tcmp', '', 'alt') : '<p class="sm">' + esc(T('Müqayisə üçün ən azı 2 test saxlayın.', 'Save at least 2 tests to compare.')) + '</p>') +
       (cmpRes ? cmpRes.map(function (r) {
         var p = window.PIDS[r.id];
+        if (!p) return '';
         return row((L() === 'en' ? p.en : p.az), r.a.toFixed(p.fix) + ' → ' + r.b.toFixed(p.fix) + ' (' + (r.d >= 0 ? '+' : '') + r.d.toFixed(p.fix) + ')');
       }).join('') : ''));
     return h;
