@@ -70,6 +70,7 @@
       return '<div class="row"><span>' + esc(p.title) + '</span><span class="' + (PC[p.prio] || 'sm') + '">' + esc(p.prio) + '</span></div>';
     }).join('') : '<p class="sm">Aydın sapma aşkarlanmadı.</p>'));
     h += '<div class="sect">Göstəricilər üzrə təhlil</div>' + rep.items.map(itemHtml).join('');
+    if (rep.skipped && rep.skipped.length) h += card('<label>Yük limiti səbəbilə sorğulanmayan PID-lər</label><p class="sm">' + esc(rep.skipped.join(', ')) + '</p>');
     if (rep.unsup.length) h += card('<label>ECU-nun dəstəkləmədiyi PID-lər</label><p class="sm">' + esc(rep.unsup.join(', ')) + '</p>');
     if (rep.ev.length) h += card('<label>Hadisələr</label>' + rep.ev.map(function (e) { return '<div class="row"><span>' + esc(e.t) + '</span><span class="sm">' + e.s + ' s</span></div>'; }).join(''));
     h += card(btn('Mətn hesabatı paylaş', 'share') + btn('Mətn hesabatı kopyala', 'copy', '', 'alt') +
@@ -81,7 +82,7 @@
     if (S.state !== 'ecu' && !st.on) h += card('<p>Real ECU-ya qoşulmamısınız. Əvvəl «Qoşul» bölməsində adapteri qoşun. Heç bir saxta dəyər göstərilmir.</p>', 'warn');
     h += stat();
     if (!st.on) {
-      h += card('<p>Əsas istifadə: dayanmış avtomobildə. Sürərkən telefona baxmayın. ECU-nu yükləməmək üçün ən çox 12 göstərici sorğulanır.</p><label>Müddət</label>' +
+      h += card('<p>Əsas istifadə: dayanmış avtomobildə. Sürərkən telefona baxmayın. ECU-nu yükləməmək üçün ən çox 14 göstərici sorğulanır (ən vacibləri seçilir).</p><label>Müddət</label>' +
         DUR.map(function (d) {
           return '<button class="btn' + (sel === d[0] ? '' : ' alt') + '" data-lv="dur" data-d="' + d[0] + '" style="display:inline-block;width:auto;margin:0 8px 8px 0;padding:10px 16px">' + esc(d[1]) + '</button>';
         }).join('') + btn('▶ Başlat', 'start', S.state === 'ecu' ? '' : 'disabled'));
@@ -153,7 +154,7 @@
       '<div class="row"><span class="k">Kalibrasiya əmsalı</span><span id="f-k">—</span></div>' + btn('Parametrləri saxla', 'fsave2', '', 'alt'));
     h += card('<label>Dolum qeydi (kalibrasiya)</label><input id="flit" inputmode="decimal" placeholder="Əlavə edilən litr">' +
       '<label class="chk"><input type="checkbox" id="ffull" checked>Bak tam dolub (kalibrasiya üçün)</label>' + btn('Dolumu qeyd et', 'ffill', '') +
-      '<p class="sm">Əvvəlki tam dolumdan sonra hesablama işləyibsə, əmsal real litrə görə düzəldilir. Hər dolumdan sonra səfər sıfırlanır.</p>' +
+      '<p class="sm">Yarımçıq dolumlar toplanır, səfər yalnız tam dolumdan sonra sıfırlanır. İlk tam dolum başlanğıc nöqtəsidir, kalibrasiya ikinci tam dolumdan başlayır (ən azı 20 km hesablanmış sürüş lazımdır, hesablama bütün sürüş boyu işləməlidir).</p>' +
       (fills.length ? fills.slice(0, 5).map(function (f) { return '<div class="row"><span>' + esc(f.t.slice(0, 10)) + ' · ' + f.added + ' L</span><span class="sm">hesab. ' + f.estL.toFixed(1) + ' L · ' + f.km.toFixed(0) + ' km</span></div>'; }).join('') : ''));
     h += card('<label>Yanacaq keyfiyyəti</label><p class="no">OBD ilə yanacağın keyfiyyəti (oktan, su, çirklilik) ölçülə bilməz. Aşağıdakılar yalnız dolayı əlamətlərdir.</p>' +
       '<div class="row"><span class="k">Yanacaq növü (PID 51)</span><span id="f-type" class="sm">—</span></div>' +
@@ -209,7 +210,7 @@
     else if (a === 'ffill') {
       var l2 = num('flit'), full = document.getElementById('ffull').checked;
       if (!(l2 > 0 && l2 < 300)) err = 'Litr düzgün deyil.';
-      else { var r = Fuel.fill(l2, full); msg = 'Qeyd olundu.' + (r.newK ? ' Yeni kalibrasiya əmsalı: ' + r.newK.toFixed(3) : (full ? ' Kalibrasiya üçün hesablanmış sərf kifayət deyil (≥0.5 L).' : '')); }
+      else { var r = Fuel.fill(l2, full); msg = 'Qeyd olundu.' + (r.newK ? ' Yeni kalibrasiya əmsalı: ' + r.newK.toFixed(3) + (r.clamped ? ' (hədd 0.6–1.6 daxilinə salındı: ölçülmüş fərq (' + r.rawK.toFixed(2) + ') çox böyükdür, hesablamanın bütün sürüş boyu işlədiyini və parametrləri yoxlayın)' : '') : (r.note || '')); }
       rerender();
     }
     else if (a === 'tsave') {
