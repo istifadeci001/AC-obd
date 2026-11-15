@@ -23,6 +23,9 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Testləri işlət
+        run: node tests/run.js
+
       - name: Paketləri quraşdır
         run: npm install
 
@@ -36,6 +39,13 @@ jobs:
         run: |
           echo 'window.DTC_BIG={};window.DTC_BIG_N=0;' > www/js/dtc-data.js
           node tools/build-dtc.js
+
+      - name: DTC bazasını yoxla
+        run: |
+          if grep -q 'DTC_BIG_N=0' www/js/dtc-data.js; then
+            echo "::warning::Böyük DTC bazası yüklənmədi, APK kiçik bazayla çıxacaq"
+            echo "DTC_NOTE= (DİQQƏT: böyük DTC bazası yüklənməyib)" >> $GITHUB_ENV
+          fi
 
       - name: DTC tərcümələrini əlavə et (varsa)
         run: |
@@ -132,4 +142,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.4.0"
+          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.5.0${DTC_NOTE}"
