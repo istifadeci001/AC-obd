@@ -242,9 +242,12 @@
         var t = document.getElementById('bkin').value.trim();
         var o = JSON.parse(t);
         if (!o || o.app !== 'acobd' || !o.data) throw new Error('Bu AC OBD ehtiyat nüsxəsi deyil.');
-        var n = Object.keys(o.data).length;
-        if (!confirm(n + ' yazı bərpa ediləcək, eyni adlı məlumat üzərinə yazılacaq. Davam edək?')) return;
-        var ok = Store.load(o.data);
+        // AI ayarları (ünvan, icazə, açar) bərpa edilmir: kənar mətn açarı başqa ünvana yönləndirməsin
+        var cleanData = {};
+        Object.keys(o.data).forEach(function (k) { if (!/^acobd:ai_/.test(k)) cleanData[k] = o.data[k]; });
+        var n = Object.keys(cleanData).length;
+        if (!confirm(n + ' yazı bərpa ediləcək, eyni adlı məlumat üzərinə yazılacaq (AI ayarları istisna). Davam edək?')) return;
+        var ok = Store.load(cleanData);
         msg = ok + ' yazı bərpa olundu. Tətbiq yenilənir…';
         rerender();
         setTimeout(function () { location.reload(); }, 900);
@@ -268,7 +271,7 @@
         local: e2 && !e2.family ? e2.az : '',
         stats: ai.stats ? statsLine() : ''
       });
-      if (!confirm('Bu mətn internetə göndəriləcək:\n\n' + p + '\n\nDavam edək?')) throw new Error('Göndərmə ləğv edildi.');
+      if (!confirm('Bu mətn internetə göndəriləcək:\nÜnvan: ' + AIOnline.target() + '\n\n' + p + '\n\nDavam edək?')) throw new Error('Göndərmə ləğv edildi.');
       out.ai = await AIOnline.ask(p);
     });
   });
