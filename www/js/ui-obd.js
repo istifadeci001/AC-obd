@@ -91,7 +91,7 @@
     el.scrollTop = el.scrollHeight;
   }
   function copyLog() {
-    var t = Log.text();
+    var t = Log.safeText(400);
     function fb() {
       var a = document.createElement('textarea');
       a.value = t; document.body.appendChild(a); a.select();
@@ -187,9 +187,16 @@
         v.textContent = '—'; s.textContent = T('ECU cavab vermir', 'ECU not responding'); s.className = 'sm no'; return;
       }
       v.textContent = r.txt ? r.txt : r.v.toFixed(p.fix === undefined ? 1 : p.fix);
+      var thr = Math.max(6000, (OBD.selected.length / Math.max(OBD.rate || 1, 0.5)) * 3000);
+      var stale = r.nodata || (r.t && Date.now() - r.t > thr);
       var out = p.warn && (r.v < p.warn[0] || r.v > p.warn[1]);
-      s.textContent = out ? T('ümumi aralıqdan kənar', 'outside general range') : T('oxunur', 'reading');
-      s.className = 'sm ' + (out ? 'no' : 'ok');
+      if (stale) {
+        s.textContent = T('KÖHNƏ dəyər: ECU cavab vermir (son oxunan göstərilir)', 'STALE value: ECU not responding (last reading shown)');
+        s.className = 'sm bad';
+      } else {
+        s.textContent = out ? T('ümumi aralıqdan kənar', 'outside general range') : T('oxunur', 'reading');
+        s.className = 'sm ' + (out ? 'no' : 'ok');
+      }
       var f = p.fix === undefined ? 1 : p.fix;
       m.textContent = 'min ' + r.min.toFixed(f) + ' · ' + T('maks', 'max') + ' ' + r.max.toFixed(f);
       if (!p.nochart) drawSeries(document.getElementById('c-' + id), [{ h: r.hist, color: '#3ddc97' }]);
