@@ -50,8 +50,9 @@ function clean(src, out) {
   for (const code of Object.keys(src)) {
     const o = out && out[code], s = src[code];
     if (!o || typeof o.t !== 'string' || !o.t.trim() || typeof o.d !== 'string') continue;
-    if (!Array.isArray(o.c) || o.c.length !== s.c.length || o.c.some(x => typeof x !== 'string')) continue;
-    if (!Array.isArray(o.s) || o.s.length !== s.s.length || o.s.some(x => typeof x !== 'string')) continue;
+    if (String(s.d || '').trim() && !o.d.trim()) continue;
+    if (!Array.isArray(o.c) || o.c.length !== s.c.length || o.c.some((x, i) => typeof x !== 'string' || (String(s.c[i] || '').trim() && !x.trim()))) continue;
+    if (!Array.isArray(o.s) || o.s.length !== s.s.length || o.s.some((x, i) => typeof x !== 'string' || (String(s.s[i] || '').trim() && !x.trim()))) continue;
     ok[code] = { t: o.t.trim(), d: o.d.trim(), c: o.c.map(x => x.trim()), s: o.s.map(x => x.trim()) };
   }
   return ok;
@@ -79,7 +80,7 @@ async function main() {
     if (!NAMES[lang]) continue;
     const file = 'data/dtc-' + lang + '.json';
     const done = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-    let todo = Object.keys(big).sort().filter(c => !done[c]);
+    let todo = Object.keys(big).sort().filter(c => !done[c] || (big[c].d && !String(done[c].d || '').trim()));
     if (LIMIT) todo = todo.slice(0, LIMIT);
     console.log(lang + ': tərcümə ediləcək ' + todo.length);
     const batches = [];
