@@ -192,7 +192,7 @@
         f.fuel.value = 'Benzin';
         f.trans.value = 'Avtomatik';
       } else if (act === 'reset') {
-        if (confirm(t('set_reset_confirm'))) { Store.clearAll(); lang = 'az'; render(); }
+        if (confirm(t('set_reset_confirm'))) { Store.clearAll(); lang = 'az'; try { if (window.DTCLang) DTCLang.set('az'); } catch (x) {} render(); }
       }
       return;
     }
