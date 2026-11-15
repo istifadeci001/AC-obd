@@ -116,7 +116,7 @@
     if (s === 'idle' || s === 'error') {
       if (st.seen) {
         st.seen = false; st.key = ''; st.welcomed = false; st.vinDone = false; st.vinBusy = false; st.dtcT = '';
-        ctx.vin = ''; ctx.cal = '';
+        ctx.vin = ''; ctx.cal = ''; ctx.dtc = null; ctx.freeze = null;
       }
       return;
     }
@@ -266,7 +266,7 @@
       card('<b>' + esc(T('Bizimlə əlaqə', 'Contact us')) + '</b><p>' + esc(T('Sual, təklif və ya xəta barədə yazın:', 'Write to us with questions, suggestions or bug reports:')) + '</p>' +
         '<p><a class="mail" href="mailto:' + EMAIL + '">' + EMAIL + '</a></p>' +
         bh(T('E-poçt ünvanını kopyala', 'Copy email address'), 'copymail', '', 'alt')) +
-      card(row(T('Versiya', 'Version'), '1.0.0') + row(T('Yaradılıb', 'Established'), '2026'));
+      card(row(T('Versiya', 'Version'), window.APP_VERSION || '') + row(T('Yaradılıb', 'Established'), '2026'));
   };
 
   /* ---------- Menyu, hadisələr ---------- */
