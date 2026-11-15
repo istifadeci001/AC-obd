@@ -18,13 +18,13 @@
     var d = Session.ctx.dtc;
     if (d) o.push('', 'Son kod oxunuşu: 03=' + (d.stored.ok ? d.stored.codes.join(',') || 'yoxdur' : 'cavab yoxdur') + ' | 07=' + (d.pending.ok ? d.pending.codes.join(',') || 'yoxdur' : 'cavab yoxdur') + ' | 0A=' + (d.permanent.ok ? d.permanent.codes.join(',') || 'yoxdur' : 'cavab yoxdur'));
     o.push('', 'Adapter jurnalı (son 150 sətir):');
-    Log.all().slice(-150).forEach(function (l) { o.push(l); });
+    Log.safe(150).forEach(function (l) { o.push(l); });
     return o.join('\n');
   }
   function render() {
     view.innerHTML = '<h2>Test paketi (Support Bundle)</h2>' +
       (msg ? '<div class="card"><p class="ok">' + esc(msg) + '</p></div>' : '') +
-      '<div class="card"><p>Proqramın vəziyyəti, adapter məlumatı, dəstək yoxlaması və adapter jurnalı bir mətndə toplanır. VIN və şəxsi məlumat daxil edilmir. Başqa avtomobil və ya adapterdə sınaqdan sonra bunu göndərin.</p>' +
+      '<div class="card"><p>Proqramın vəziyyəti, adapter məlumatı, dəstək yoxlaması və adapter jurnalı bir mətndə toplanır. VIN daxil edilmir (adapter jurnalında VIN cavabı gizlədilir). Cihaz modeli (userAgent) daxildir. Başqa avtomobil və ya adapterdə sınaqdan sonra bunu göndərin.</p>' +
       '<button class="btn" data-sp="share">Paketi paylaş</button><button class="btn alt" data-sp="copy">Paketi kopyala</button></div>' +
       '<div class="card"><label>Ekranın açıq qalması</label><p class="sm">Canlı diaqnostika və ya yanacaq hesablaması işləyərkən ekran avtomatik sönməsin deyə ekranı oyaq saxlamağa çalışır. Bu Android WebView-da işləməyə bilər, cihazda yoxlanmayıb.</p></div>';
   }
