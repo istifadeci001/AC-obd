@@ -46,7 +46,8 @@
     repnote: ['Hissəni yalnız ölçmə ilə təsdiqləndikdən sonra dəyişin.', 'Меняйте деталь только после подтверждения измерением.', 'Replace a part only after confirming by measurement.'],
     danger: ['Təhlükə səviyyəsi (təxmini, bizim qayda)', 'Уровень опасности (оценка, наше правило)', 'Danger level (approximate, our rule)'],
     level: ['Səviyyə', 'Уровень', 'Level'],
-    dgH: ['Yüksək', 'Высокий', 'High'], dgM: ['Orta', 'Средний', 'Medium'], dgL: ['Aşağı', 'Низкий', 'Low'],
+    dgH: ['Yüksək', 'Высокий', 'High'], dgM: ['Orta', 'Средний', 'Medium'], dgL: ['Aşağı', 'Низкий', 'Low'], dgU: ['Bilinmir', 'Неизвестно', 'Unknown'],
+    nunk: ['Bu kod üçün təhlükə məlumatı yoxdur. Təhlükəsiz hesab etməyin: kodu yoxlayın, xüsusilə əyləc, hava yastığı, sükan və mühərrik kodlarında.', 'Для этого кода нет данных об опасности. Не считайте его безопасным: проверьте код, особенно тормоза, подушки безопасности, рулевое и двигатель.', 'No danger data for this code. Do not assume it is safe: have it checked, especially brake, airbag, steering and engine codes.'],
     nmis: ['Yanma buraxma katalizatora zərər verə bilər. Check Engine yanıb-sönürsə avtomobili sürməyin.', 'Пропуски зажигания могут повредить катализатор. Если Check Engine мигает, не езжайте.', 'Misfire can damage the catalyst. If Check Engine flashes, do not drive.'],
     nhot: ['Mühərrikin qızması: davam etdirmək ciddi zərər verə bilər.', 'Перегрев двигателя: продолжение движения может нанести серьёзный ущерб.', 'Engine overheating: continuing may cause serious damage.'],
     nlimp: ['Mənbə məlumatına görə təcili (limp) rejim mümkündür.', 'По данным источника возможен аварийный (limp) режим.', 'The source says limp mode is possible.'],
@@ -97,11 +98,12 @@
   function sysOf(c) { return t(c[0] === 'P' ? 'sysP' : (c[0] === 'B' ? 'sysB' : (c[0] === 'C' ? 'sysC' : 'sysU'))); }
   function genOf(c) { return t((c[1] === '0' || (c[0] === 'P' && c[1] === '2')) ? 'gen' : 'mfr'); }
   function danger(e, c) {
-    var f = e.flags || [0, 0, 0, 0];
+    var f = e.flags;
     if (/^P03(0\d|16)$/.test(c)) return ['dgH', 'nmis'];
     if (c === 'P0217') return ['dgH', 'nhot'];
-    if (f[3]) return ['dgH', 'nlimp'];
-    if (f[0] || f[1]) return ['dgM', 'nmil'];
+    if (f && f[3]) return ['dgH', 'nlimp'];
+    if (f && (f[0] || f[1])) return ['dgM', 'nmil'];
+    if (!f) return ['dgU', 'nunk']; // məlumat yoxdur: "aşağı təhlükə" kimi göstərmirik
     return ['dgL', 'nlow'];
   }
   function trKey(c) { return 'dtc_tr:' + lg() + ':' + c; }
@@ -137,7 +139,7 @@
     h += card('<label>' + esc(t('seq')) + '</label><ol>' + seq.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>');
     h += card('<label>' + esc(t('repair')) + '</label>' + (e.diff ? row(t('diff'), e.diff[0] || '—') + row(t('diy'), e.diff[1] ? t('possible') : t('diyno')) : '<p class="sm">' + esc(t('norepair')) + '</p>') +
       '<p class="sm">' + esc(t('repnote')) + '</p>');
-    h += card('<label>' + esc(t('danger')) + '</label>' + row(t('level'), t(dg[0]), dg[0] === 'dgH' ? 'bad' : (dg[0] === 'dgM' ? 'no' : 'ok')) + '<p class="sm">' + esc(t(dg[1])) + '</p>',
+    h += card('<label>' + esc(t('danger')) + '</label>' + row(t('level'), t(dg[0]), dg[0] === 'dgH' ? 'bad' : (dg[0] === 'dgM' ? 'no' : (dg[0] === 'dgL' ? 'ok' : 'sm'))) + '<p class="sm">' + esc(t(dg[1])) + '</p>',
       dg[0] === 'dgH' ? 'warn' : '');
     if (e.related && e.related.length) h += card('<label>' + esc(t('related')) + '</label>' + e.related.map(function (r) {
       return '<button class="btn alt" style="width:auto;display:inline-block;margin:4px 4px 0 0;padding:8px 12px" data-dc="open" data-c="' + esc(r) + '">' + esc(r) + '</button>';
@@ -147,7 +149,7 @@
       link(t('bg'), 'https://www.google.com/search?q=' + q + '+causes+diagnosis') +
       link(t('by'), 'https://www.youtube.com/results?search_query=' + q + '+diagnosis+repair') +
       btn(t('bsrc'), 'src', 'alt') +
-      (showSrc ? (e.src ? '<p class="sm">' + esc(t('srcinfo')) + '</p>' + link(t('srcopen'), e.src) : '<p class="sm">' + esc(t('srcnone')) + '</p>') +
+      (showSrc ? (e.src && /^https?:\/\//i.test(e.src) ? '<p class="sm">' + esc(t('srcinfo')) + '</p>' + link(t('srcopen'), e.src) : '<p class="sm">' + esc(t('srcnone')) + '</p>') +
         '<p class="sm">' + esc(t('srcnote')) + '</p>' : ''));
     view.innerHTML = h;
   }
@@ -155,7 +157,7 @@
   async function translate(c) {
     var L = lg(), e = window.DTC_DB[c];
     var p = 'Translate the following automotive diagnostic trouble code text from English to ' + (L === 'ru' ? 'Russian' : 'Azerbaijani') + '. Reply with the translation only.\nCode: ' + c + '\nTitle: ' + e.en + (e.desc ? '\nDescription: ' + e.desc : '');
-    if (!confirm(t('csend') + '\n\n' + p + '\n\n' + t('cq'))) return;
+    if (!confirm(t('csend') + '\n(' + AIOnline.target() + ')\n\n' + p + '\n\n' + t('cq'))) return;
     busy = t('translating'); err = ''; render();
     try { Store.set(trKey(c), await AIOnline.ask(p)); }
     catch (x) { err = x.message + t('aihint'); }
