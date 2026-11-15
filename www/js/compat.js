@@ -67,10 +67,11 @@ window.Compat = (function () {
       out.push(it('VIN oxumaq (Mode 09)', r.vin.hasVin ? 'ok' : 'no', r.vin.hasVin ? '' : 'ECU VIN-i dəstəkləmir'));
       out.push(it('Kalibrasiya ID (Mode 09)', r.vin.hasCal ? 'ok' : 'no', r.vin.hasCal ? '' : 'ECU dəstəkləmir'));
     } else out.push(P('VIN oxumaq (Mode 09)', r && r.vin));
-    var o2 = ['14', '15', '24', '25'].filter(function (x) { return S.supported.indexOf(x) >= 0; });
+    var o2 = S.supported.filter(function (x) { var n = parseInt(x, 16); return (n >= 0x14 && n <= 0x1B) || (n >= 0x24 && n <= 0x2B) || (n >= 0x34 && n <= 0x3B); });
     out.push(it('O2 / lambda göstəriciləri', conn ? (o2.length ? 'ok' : 'no') : 'unk',
       conn ? (o2.length ? 'Var: PID ' + o2.join(', ') : 'Bu avtomobil O2/lambda PID vermir') : 'Adapter qoşulmayıb'));
-    out.push(it('Ağıllı diaqnostika (qaydalar, internetsiz)', 'ok', 'Canlı məlumat və kodlar olduqca dəqiqləşir'));
+    out.push(it('Ağıllı diaqnostika (qaydalar, internetsiz)', 'ok', 'Qaydalar canlı məlumat və oxunmuş kodlarla işləyir. Hədlər ümumi təxminidir, real avtomobildə təsdiqlənməyib, nəticə ehtimaldır'));
+    out.push(it('O2 / katalizator differensial diaqnostikası', 'part', 'Yazılıb və sahte adapterlə sınanıb, real avtomobildə təsdiqlənməyib. Sensor mövqeyi (PID 13/1D) təsdiqlənməyibsə katalizator nəticəsi çıxmır'));
     out.push(it('AI canlı monitor (AI Live Monitor)', 'ok', 'Canlı oxuma işləməlidir'));
     out.push(it('Məlumat qeydi və CSV (Data Logging)', 'ok'));
     out.push(it('Hesabatlar (Reports)', 'part', 'Mətn hesabat var, PDF hələ yoxdur'));
@@ -79,7 +80,7 @@ window.Compat = (function () {
     out.push(it('Qabaqcıl diaqnostika: ABS, SRS, TCM və s.', 'todo', 'Hələ yazılmayıb'));
     out.push(it('Kia/Hyundai Enhanced PID', 'todo', 'Hələ yazılmayıb, yoxlanmış mənbə lazımdır'));
     out.push(it('Klassik Bluetooth və Wi-Fi adapter', 'todo', 'Hələ yazılmayıb, native plugin və uyğun adapter lazımdır'));
-    out.push(it('Kodlaşdırma, aktiv test, açar/immobilayzer', 'never', 'Planlaşdırılmır, KW903 ilə mümkün deyil'));
+    out.push(it('Kodlaşdırma, aktiv test, açar/immobilayzer', 'never', 'Planlaşdırılmır: standart ELM327 adapterlə etibarlı və təhlükəsiz deyil'));
     return out;
   }
   function summary() {
