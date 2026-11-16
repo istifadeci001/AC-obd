@@ -26,6 +26,21 @@ jobs:
       - name: Testləri işlət
         run: node tests/run.js
 
+      - name: Testləri işlət
+        run: node tests/run.js
+
+      - name: Bir fayllı paket (göndərmək üçün)
+        run: node tools/bundle.js
+
+      - name: Bir fayllı paketi yüklə
+        uses: actions/upload-artifact@v4
+        with:
+          name: AC-OBD-single-html
+          path: dist/AC-OBD-single.html
+
+      - name: Paketləri quraşdır
+        run: npm install
+        
       - name: Paketləri quraşdır
         run: npm install
 
