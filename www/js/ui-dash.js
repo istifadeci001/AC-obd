@@ -1,14 +1,16 @@
 (function () {
   'use strict';
   var view = document.getElementById('view'), S = OBD.S;
-  var ICON = { livediag: '🩺', o2diag: '🔬', fuel: '⛽', compat: '✅', connect: '🔌', live: '📈', monitor: '🤖', diag: '🧠', dtc: '⚠️', freeze: '🧊', readiness: '🚦', mode06: '🧪', advanced: '🛠️', vehicle: '🚗', logging: '📝', reports: '📄', custompid: '🎛️', aionline: '✨', backup: '💾', archive: '🗂️', glossary: '📚', garage: '🏠', settings: '⚙️', about: 'ℹ️' };
+  var ICON = { autolive: '📡', autodiag: '🧾', livediag: '🩺', o2diag: '🔬', fuel: '⛽', compat: '✅', connect: '🔌', live: '📈', monitor: '🤖', diag: '🧠', dtc: '⚠️', freeze: '🧊', readiness: '🚦', mode06: '🧪', advanced: '🛠️', vehicle: '🚗', logging: '📝', reports: '📄', custompid: '🎛️', aionline: '✨', backup: '💾', archive: '🗂️', glossary: '📚', garage: '🏠', settings: '⚙️', about: 'ℹ️' };
   var LBL = {
+    autolive: 'Canlı göstərici: tam avto-jurnal', autodiag: 'Canlı diaqnostika: avto-jurnal (AI üçün)',
     livediag: 'Canlı diaqnostika (Live Diagnostics)', fuel: 'Yanacaq, bak, təkər (Fuel & Tires)',
     compat: 'Dəstək yoxlaması (Compatibility)', o2diag: 'O2 / katalizator diaqnostikası', readiness: 'Hazırlıq testləri (Readiness)', mode06: 'Mode 06 (xam)',
     custompid: 'Fərdi PID (Custom PID)', aionline: 'AI izah, internet (AI Explain)', backup: 'Ehtiyat nüsxə (Backup)',
     archive: 'Avtomobil arxivi (Vehicle Archive)', glossary: 'Terminlər lüğəti (Glossary)', about: 'Haqqımızda və Əlaqə (About)'
   };
   var GROUPS = [
+    ['Avtomatik jurnal (AI üçün)', ['autolive', 'autodiag']],
     ['Diaqnostika', ['livediag', 'o2diag', 'live', 'dtc', 'freeze', 'readiness', 'mode06', 'diag', 'monitor', 'compat']],
     ['Avtomobil', ['fuel', 'vehicle', 'garage', 'archive', 'logging', 'reports']],
     ['Alətlər', ['custompid', 'aionline', 'backup', 'glossary', 'advanced', 'settings', 'about']]
@@ -79,3 +81,4 @@
   pill();
   if (cur() === 'dashboard') render();
 })();
+

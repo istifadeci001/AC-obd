@@ -325,3 +325,105 @@
   apply();
 })();
 
+
+// ===== Avto-jurnal ekranları: "Canlı göstərici" və "Canlı diaqnostika" (AutoLog mühərriki session.js-dədir) =====
+(function () {
+  'use strict';
+  var view = document.getElementById('view');
+  if (!view || !window.AutoLog) return;
+  var ITEMS = [['autolive', 'Canlı göstərici (tam avto-jurnal)'], ['autodiag', 'Canlı diaqnostika (avto-jurnal)']];
+  var screens = {}, msg = '', prev = false;
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function cur() { return (location.hash || '#dashboard').slice(1); }
+  function p2(n) { return ('0' + n).slice(-2); }
+  function mmss(ms) { var s = Math.max(0, Math.round(ms / 1000)); return p2(Math.floor(s / 60)) + ':' + p2(s % 60); }
+  function sess() { return AutoLog.session() || AutoLog.restore(); }
+  function row(k, v, c) { return '<div class="row"><span class="k">' + esc(k) + '</span><span class="' + (c || '') + '">' + esc(v) + '</span></div>'; }
+  function btn(l, a, c) { return '<button class="btn' + (c ? ' ' + c : '') + '" data-al="' + a + '">' + esc(l) + '</button>'; }
+  function PN(id) { var p = window.PIDS && PIDS[id]; return id === 'RV' ? 'Adapter gərginliyi' : (p ? (p.az || p.en) : id); }
+  function PU(id) { var p = window.PIDS && PIDS[id]; return id === 'RV' ? 'V' : (p && p.unit ? p.unit : ''); }
+  function FV(id, v) { var p = window.PIDS && PIDS[id], d = p && p.fix !== undefined ? p.fix : 2; return v === null || v === undefined ? '—' : Number(v).toFixed(d); }
+  var SC = { REAL: 'ok', STALE: 'no', UNSUPPORTED: 'sm', INVALID: 'bad', UNKNOWN: 'sm' };
+
+  function head(s, kind) {
+    var h = '<div class="card"><h2>' + esc(kind === 'diag' ? 'Canlı diaqnostika (avto-jurnal)' : 'Canlı göstərici (tam avto-jurnal)') + '</h2>' +
+      '<p class="sm">Adapter qoşulan kimi avtomatik başlayır: bütün PID-lər, kodlar, hazırlıq, freeze frame, Mode 06 və adapter məlumatı yazılır. Hesabatı kopyalayıb Claude, Gemini və ya ChatGPT-yə yapışdırın.</p>' +
+      btn('📋 Kopyala', 'copy') + btn('⬇️ TXT yüklə', 'dl', 'alt') + btn('👁 Önbaxış', 'prev', 'alt') +
+      (s && s.on ? btn('■ Dayandır', 'stop', 'alt') : (s ? btn('▶ Davam et', 'resume', 'alt') : '')) + btn('↻ Yenidən başlat', 'restart', 'alt') + btn('🎯 Sorğunu avto-jurnala qaytar', 'take', 'alt') +
+      btn('Avto-başlat: ' + (AutoLog.auto() ? 'AÇIQ' : 'BAĞLI'), 'auto', 'alt') +
+      '<p class="sm" id="al-msg">' + esc(msg) + '</p></div>' + (prev ? '<div class="card"><pre id="al-pre" style="white-space:pre-wrap;font-size:11px;max-height:60vh;overflow:auto"></pre></div>' : '');
+    return h;
+  }
+  function dyn(kind) {
+    var s = sess(), S = OBD.S, now = Date.now();
+    if (!s) return '<div class="card"><p>Jurnal hələ yoxdur. Adapter ECU-ya qoşulanda avtomatik başlayacaq' + (AutoLog.auto() ? '' : ' (avto-başlat bağlıdır: "Yenidən başlat" basın)') + '.</p>' + row('Vəziyyət', S.state) + '</div>';
+    var end = s.t1 || now, h = '<div class="card">' + row('Vəziyyət', s.on ? '● yazılır' : '■ dayandırılıb' + (s.restored ? ' (əvvəlki sessiya)' : ''), s.on ? 'ok' : 'no') +
+      row('Müddət', mmss(end - s.t0)) + row('Nümunə sayı', String(s.ev.length)) + row('Oxunan PID sayı', String(Object.keys(s.cnt).length) + ' / ' + (s.supported.length || '—')) +
+      row('Adapter', (S.deviceName || '—') + ' | ' + (S.elmVersion || '—')) + row('Protokol', S.protocol || '—') + row('Əlaqə', S.state) + '</div>';
+    if (kind === 'full') {
+      var ids = s.supported.slice(); Object.keys(s.cnt).forEach(function (i) { if (ids.indexOf(i) < 0) ids.push(i); });
+      h += '<div class="card"><h2>Bütün PID-lər (a-dan z-yə)</h2>';
+      ids.filter(function (i) { return parseInt(i, 16) % 32 !== 0 || isNaN(parseInt(i, 16)); }).sort().forEach(function (id) {
+        var st = AutoLog.status(s, id, s.on ? now : end), c = s.cnt[id];
+        h += '<div class="row"><span class="k">' + esc(id + ' ' + PN(id)) + '</span><span class="' + SC[st.st] + '">' + (c ? esc(FV(id, c.last) + ' ' + PU(id) + ' ') : '') + '[' + st.st + ']' + (c ? ' <span class="sm">n=' + c.n + '</span>' : '') + '</span></div>';
+      });
+      h += '</div>';
+    } else {
+      var an = AutoLog.analyze(s);
+      h += '<div class="card"><h2>Fazalar</h2>';
+      if (!an.phases.length) h += '<p class="sm">Məlumat yoxdur.</p>';
+      an.phases.forEach(function (ph, i) {
+        var st = ph.st, bits = [];
+        function a(id, lab, how) { var x = st[id]; if (x) bits.push(lab + ' ' + FV(id, how === 'range' ? x.min : x.sum / x.n) + (how === 'range' ? '…' + FV(id, x.max) : '') + ' ' + PU(id)); }
+        a('0C', 'RPM orta', 'avg'); a('0D', 'sürət maks', 'range'); a('05', 'ECT', 'range'); a('06', 'STFT', 'avg'); a('07', 'LTFT', 'avg'); a('34', 'O2 B1S1', 'range'); a('15', 'O2 B1S2', 'range'); a('42', 'gərginlik', 'avg');
+        h += '<p><b>' + (i + 1) + '. ' + esc(ph.name) + '</b><br><span class="sm">' + mmss(ph.a * 1000) + ' → ' + mmss(ph.b * 1000) + ' (' + mmss((ph.b - ph.a) * 1000) + ')</span><br><span class="sm">' + esc(bits.join(' | ') || 'bu fazada göstərilən PID oxunmayıb') + '</span></p>';
+      });
+      h += '</div><div class="card"><h2>Əsas hadisələr</h2>';
+      var evs = AutoLog.events(s, an).slice(-40);
+      h += evs.length ? '<ul>' + evs.map(function (e) { return '<li><span class="sm">' + mmss(e.ms) + '</span> ' + esc(e.s) + '</li>'; }).join('') + '</ul>' : '<p class="sm">—</p>';
+      h += '</div><div class="card"><h2>Xəta kodları</h2>' + (window.DtcStatus && s.snap.dtc && !s.snap.dtc.error ? '<ul>' + DtcStatus.lines(s.snap.dtc).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>' : '<p class="sm">Hələ oxunmayıb.</p>') + '</div>';
+    }
+    return h;
+  }
+  function paint(kind) { var e = document.getElementById('al-dyn'); if (e) e.innerHTML = dyn(kind); if (prev) fillPrev(kind); }
+  function fillPrev(kind) { var s = sess(), p = document.getElementById('al-pre'); if (p) p.textContent = s ? AutoLog.build(s, kind, { raw: false }) : 'Jurnal yoxdur.'; }
+  screens.autolive = function () { return head(sess(), 'full') + '<div id="al-dyn">' + dyn('full') + '</div>'; };
+  screens.autodiag = function () { return head(sess(), 'diag') + '<div id="al-dyn">' + dyn('diag') + '</div>'; };
+
+  function copyTxt(t, ok) {
+    function fb() { var a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); var r = false; try { r = document.execCommand('copy'); } catch (e) {} document.body.removeChild(a); ok(r); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { ok(true); }, fb); else fb();
+  }
+  function dlTxt(t, kind) {
+    var d = new Date(), name = 'AC-OBD-' + (kind === 'diag' ? 'diaqnostika' : 'jurnal') + '-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + '.txt';
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], { type: 'text/plain;charset=utf-8' })); a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+  function say(t) { msg = t; var e = document.getElementById('al-msg'); if (e) e.textContent = t; }
+  function rerender() { var c = cur(); if (screens[c]) view.innerHTML = screens[c](); if (prev) fillPrev(c === 'autodiag' ? 'diag' : 'full'); }
+
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-al]'); if (!el) return;
+    var a = el.getAttribute('data-al'), kind = cur() === 'autodiag' ? 'diag' : 'full', s = sess();
+    if (a === 'copy' || a === 'dl') {
+      if (!s) { say('Jurnal yoxdur.'); return; }
+      try {
+        if (a === 'copy') copyTxt(AutoLog.build(s, kind, { raw: false }), function (ok) { say(ok ? 'Kopyalandı. İndi Claude, Gemini və ya ChatGPT-yə yapışdırın. (Xam nümunələr TXT faylındadır.)' : 'Kopyalanmadı: Önbaxışdan əl ilə seçin.'); });
+        else { dlTxt(AutoLog.build(s, kind, { raw: true }), kind); say('Yükləmə başladı (xam nümunələrlə birlikdə). İşləməsə "Kopyala" istifadə edin.'); }
+      } catch (x) { say('Alınmadı: ' + x.message); }
+    } else if (a === 'prev') { prev = !prev; rerender(); }
+    else if (a === 'stop') { AutoLog.stop(); say('Jurnal dayandırıldı.'); rerender(); }
+    else if (a === 'resume') { AutoLog.resume(); say('Jurnal davam edir.'); rerender(); }
+    else if (a === 'restart') { AutoLog.clear(); if (OBD.S.state === 'ecu') AutoLog.start(true); say('Yeni jurnal başladı.'); rerender(); }
+    else if (a === 'take') { AutoLog.takeOver(); say('Avto-jurnal sorğu siyahısını geri aldı.'); }
+    else if (a === 'auto') { AutoLog.setAuto(!AutoLog.auto()); say('Avto-başlat ' + (AutoLog.auto() ? 'açıldı' : 'bağlandı') + '.'); rerender(); }
+  });
+  setInterval(function () { var c = cur(); if (screens[c]) paint(c === 'autodiag' ? 'diag' : 'full'); }, 2000);
+
+  function addDrawer() {
+    var dl = document.getElementById('drawerlist'); if (!dl) return;
+    ITEMS.forEach(function (it) { if (!dl.querySelector('a[href="#' + it[0] + '"]')) { var a = document.createElement('a'); a.href = '#' + it[0]; a.textContent = it[1]; dl.appendChild(a); } });
+  }
+  function apply() { var c = cur(); if (screens[c]) { msg = ''; prev = false; AutoLog.takeOver(); rerender(); window.scrollTo(0, 0); } addDrawer(); }
+  var dl0 = document.getElementById('drawerlist'); if (dl0) new MutationObserver(addDrawer).observe(dl0, { childList: true });
+  window.addEventListener('hashchange', apply); addDrawer(); apply();
+})();
