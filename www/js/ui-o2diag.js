@@ -94,7 +94,7 @@
     h += '<p class="sm">MID 21 standart cədvələ görə 1-ci sıra katalizator monitorudur, real avtomobildə təsdiqlənməyib. Dəyərlər xam göstərilir, miqyas tətbiq olunmur.</p>';
     h += btn('Mode 06 oxu (MID 21)', 'm06', (S.state === 'ecu' && !st.on && !busy) ? '' : 'disabled', 'alt');
     if (st.m06Err) h += '<p class="no">' + esc(st.m06Err) + '</p>';
-    if (st.m06) h += st.m06.tests.map(function (t) { return '<div class="sm">TID ' + ('0' + t.tid.toString(16)).slice(-2).toUpperCase() + ' · dəyər ' + t.v + ' (' + t.mn + '…' + t.mx + ') <span class="' + (t.ok ? 'ok' : 'bad') + '">' + (t.ok ? '✔ hədlər daxilində' : '✖ hədləri aşıb') + '</span></div>'; }).join('');
+    if (st.m06) h += st.m06.tests.map(function (t) { return '<div class="sm">TID ' + ('0' + t.tid.toString(16)).slice(-2).toUpperCase() + ' · UASID ' + ('0' + t.uasid.toString(16)).slice(-2).toUpperCase() + ' · dəyər ' + t.v + ' (' + t.mn + '…' + t.mx + ') ' + (t.limit === 'OUT' ? 'ECU hədlərindən kənarda' : (t.limit === 'IN' ? 'ECU hədləri daxilində' : 'müqayisə edilmir')) + ' · ' + t.status + (t.mapped ? '' : ' (TID xəritələnməyib)') + '</div>'; }).join('');
     return h;
   }
 
@@ -205,3 +205,4 @@
   addDrawer();
   apply();
 })();
+
