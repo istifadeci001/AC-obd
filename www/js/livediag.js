@@ -51,7 +51,7 @@ window.LiveDiag = (function () {
       if (!r || r.v === null || r.nodata || !r.t) return;
       var a = st.acc[id] || (st.acc[id] = { n: 0, sum: 0, min: null, max: null, v: null, t: 0, ser: [], ls: 0 });
       if (a.t === r.t) return;
-      a.t = r.t; a.v = r.v; a.n++; a.sum += r.v;
+      a.t = r.t; a.v = r.v; a.aux = r.aux || null; a.n++; a.sum += r.v;
       if (id === '0C') { st.rr = st.rr || []; st.rr.push(r.v); if (st.rr.length > 6) st.rr.shift(); }
       if (a.min === null || r.v < a.min) a.min = r.v;
       if (a.max === null || r.v > a.max) a.max = r.v;
@@ -196,7 +196,21 @@ window.LiveDiag = (function () {
       if (used[id] || !A(id)) return;
       add(mk(id, null, V.U, 'Bu göstərici üçün təsdiqlənmiş ümumi norma müəyyən edilməyib'));
     });
+    var tmg = pairTiming();
+    if (tmg && !tmg.valid) out.forEach(function (it) { if ((it.id === tmg.a || it.id === tmg.b) && it.verdict === V.N) { it.verdict = V.U; it.note = (it.note ? it.note + ' ' : '') + 'Tezlik kifayət etmir (' + tmg.reason + '): normal elan edilmir.'; } });
     return out;
+  }
+  function firstOf(list) { for (var i = 0; i < list.length; i++) if (st.ids.indexOf(list[i]) >= 0) return list[i]; return null; }
+  function pairTiming() { var f = firstOf(['34', '24', '14']), r = firstOf(['15', '25', '35']); return f && r && OBD.timing ? OBD.timing(f, r) : null; }
+  function catTemp() {
+    function pk(id) {
+      if (st.ids.indexOf(id) < 0) return null;
+      var b = B('hot', id), basis = 'isti mühərrik';
+      if (!b || b.n < 5) { b = A(id); basis = 'bütün rejimlər'; }
+      return b ? { id: id, avg: b.avg, min: b.min, max: b.max, n: b.n, basis: basis } : null;
+    }
+    var s1 = pk('3C'), s2 = pk('3E');
+    return { s1: s1, s2: s2, delta: s1 && s2 ? s2.avg - s1.avg : null };
   }
   function prio(it) { return it.crit ? 'Kritik' : (it.verdict === V.P ? 'Yüksək' : (it.verdict === V.S ? 'Orta' : null)); }
   function report() {
@@ -206,12 +220,18 @@ window.LiveDiag = (function () {
     var codes = [];
     var d = window.Session && Session.ctx.dtc;
     if (d) ['stored', 'pending', 'permanent'].forEach(function (k) { if (d[k] && d[k].ok) d[k].codes.forEach(function (c) { if (codes.indexOf(c) < 0) codes.push(c); }); });
+    var dtc = window.DtcStatus ? DtcStatus.summarize(d) : null;
     var codeInfo = codes.map(function (c) {
       var e = window.DTC_DB ? window.DTC_DB[c] : null;
-      return { code: c, name: e ? (e.az || e.en || '') : '', family: !!(e && e.family), causes: e && e.causes ? e.causes.slice(0, 4) : [], check: e && e.check ? e.check.slice(0, 3) : [] };
+      return { code: c, status: window.DtcStatus ? DtcStatus.labelsOf(c, d) : [], name: e ? (e.az || e.en || '') : '', family: !!(e && e.family), causes: e && e.causes ? e.causes.slice(0, 4) : [], check: e && e.check ? e.check.slice(0, 3) : [] };
     });
-    if (codes.length) probs.push({ prio: 'Yüksək', title: 'ECU-da xəta kodu var: ' + codeInfo.map(function (c) { return c.code + (c.name ? ' (' + c.name + ')' : ''); }).join('; '), it: null });
-    if (st.skipped && st.skipped.length) probs.push({ prio: 'Aşağı', title: 'Yük limiti səbəbilə sorğulanmayan göstəricilər: ' + st.skipped.join(' '), it: null });
+    if (codes.length) probs.push({ prio: 'Yüksək', title: 'ECU-da xəta kodu var: ' + codeInfo.map(function (c) { return c.code + (c.status && c.status.length ? ' [' + c.status.join(' + ') + ']' : '') + (c.name ? ' (' + c.name + ')' : ''); }).join('; '), it: null });
+    var tn = st.t1 || Date.now(), pidStatus = [];
+    st.ids.forEach(function (id) { var x = OBD.statusOf(id, tn); x.id = id; x.name = (window.PIDS[id] ? (window.PIDS[id].az || window.PIDS[id].en) : id); pidStatus.push(x); });
+    (st.skipped || []).forEach(function (id) { pidStatus.push({ id: id, name: (window.PIDS[id] ? (window.PIDS[id].az || window.PIDS[id].en) : id), status: 'UNKNOWN', reason: 'yük limiti səbəbilə sorğulanmayıb (nasazlıq deyil)', n: 0, bad: 0, nodata: 0, age: null }); });
+    (st.unsup || []).forEach(function (id) { var x = OBD.statusOf(id, tn); x.id = id; x.name = (window.PIDS[id] ? (window.PIDS[id].az || window.PIDS[id].en) : id); pidStatus.push(x); });
+    var cmp = pairTiming(), cat = catTemp();
+    var focusAdvice = codes.some(function (c) { return /^P04[23][01]$/.test(c); }) || (cmp && !cmp.valid);
     var ai = null;
     try { ai = AIRules.analyze(OBD.values, d || null); } catch (x) { ai = null; }
     var nodata = st.ids.filter(function (id) { return !A(id); });
@@ -227,7 +247,7 @@ window.LiveDiag = (function () {
       (probs.filter(function (p) { return p.it; }).length ? ' Diqqət tələb edən: ' + probs.filter(function (p) { return p.it; }).slice(0, 3).map(function (p) { return p.it.name; }).join('; ') + '.' : ' Ölçülmüş canlı məlumatda aydın sapma aşkarlanmadı.');
     concl += codes.length ? ' ECU-da xəta kodu var: ' + codes.join(', ') + '. Canlı göstəricilərin normal olması kodu ləğv etmir.' : (d ? '' : ' Xəta kodları oxunmayıb, bu hesabat kodların olmadığını göstərmir.');
     concl += ' Bu nəticə yalnız ölçülmüş məlumata əsaslanır və qəti diaqnoz deyil.';
-    return { items: items, probs: probs, codes: codes, cnt: cnt, el: el, ctxs: ctxs, ev: st.ev.slice(), reads: st.reads, rate: st.rate, nodata: nodata, ids: st.ids.slice(), unsup: st.unsup, skipped: st.skipped || [], codeInfo: codeInfo, ai: ai, concl: concl, t: new Date(st.t0).toISOString() };
+    return { items: items, probs: probs, codes: codes, cnt: cnt, el: el, ctxs: ctxs, ev: st.ev.slice(), reads: st.reads, rate: st.rate, nodata: nodata, ids: st.ids.slice(), unsup: st.unsup, skipped: st.skipped || [], codeInfo: codeInfo, dtc: dtc, dtcLines: window.DtcStatus ? DtcStatus.lines(d) : null, pidStatus: pidStatus, cmp: cmp, cat: cat, focusAdvice: focusAdvice, ai: ai, concl: concl, t: new Date(st.t0).toISOString() };
   }
   function fmt(it) { return it.avg === undefined || it.avg === null ? '—' : it.avg.toFixed(it.fix) + ' ' + it.unit + ' (min ' + it.min.toFixed(it.fix) + ', maks ' + it.max.toFixed(it.fix) + ')'; }
   function text(rep, ctx) {
@@ -238,10 +258,10 @@ window.LiveDiag = (function () {
     o.push('3. Adapter: ' + (S0.deviceName || '—') + ' | ' + (S0.elmVersion || '—') + ' | Protokol: ' + (S0.protocol || '—'));
     o.push('4. İş rejimi (saniyə): ' + (rep.ctxs.length ? rep.ctxs.map(function (c) { return c.k + '=' + c.s; }).join(', ') : '—'));
     o.push('5. Oxunan PID: ' + (rep.items.length) + ' | Oxuma: ' + rep.reads + ', tezlik ~' + rep.rate.toFixed(1) + '/san | Cavabsız: ' + (rep.nodata.join(', ') || 'yoxdur'));
-    o.push('   Sorğulanan PID-lər: ' + (rep.ids && rep.ids.length ? rep.ids.join(' ') : '—'));
-    if (rep.skipped && rep.skipped.length) o.push('   Yük limiti səbəbilə sorğulanmayan (nasazlıq deyil): ' + rep.skipped.join(' '));
-    if (rep.unsup && rep.unsup.length) o.push('   ECU dəstəkləmir (nasazlıq deyil): ' + rep.unsup.join(' '));
-    if (rep.nodata && rep.nodata.length) o.push('   Sorğulanıb, dəyər gəlməyib: ' + rep.nodata.join(' '));
+    o.push('   PID statusları (test sonunda; REAL / STALE / UNSUPPORTED / INVALID / UNKNOWN):');
+    (rep.pidStatus || []).forEach(function (x) {
+      o.push('   ' + x.id + ' ' + x.name + ': ' + x.status + (x.status === 'REAL' ? ' | oxuma ' + x.n + (x.age !== null ? ', son yenilənmə ' + x.age.toFixed(1) + ' s əvvəl' : '') : (x.reason ? ' (' + x.reason + ')' : '')));
+    });
     [['6. Normal göstəricilər', V.N], ['7. Şübhəli göstəricilər', V.S]].forEach(function (g) {
       o.push('', g[0] + ':');
       var l = rep.items.filter(function (i) { return i.verdict === g[1]; });
@@ -264,7 +284,22 @@ window.LiveDiag = (function () {
       rep.ai.hyps.forEach(function (h) { o.push('  * ' + AIRules.name(h.key) + ' [' + h.level + ']'); h.ev.forEach(function (e) { o.push('      ' + e); }); });
       rep.ai.safety.forEach(function (s) { o.push('  ! ' + s); });
     }
-    o.push('', '11. Xəta kodları: ' + (rep.codes.join(', ') || 'oxunmayıb və ya yoxdur'));
+    var cm = rep.cmp;
+    if (cm) {
+      o.push('', 'O2 sensor müqayisəsi (ön PID ' + cm.a + ' ↔ arxa PID ' + cm.b + '; ümumi rejim):');
+      o.push('  Median Δt: PID ' + cm.a + ' = ' + (cm.dtA === null ? '—' : cm.dtA.toFixed(2) + ' s') + ', PID ' + cm.b + ' = ' + (cm.dtB === null ? '—' : cm.dtB.toFixed(2) + ' s') + ' | sensorlar arası median zaman fərqi: ' + (cm.lag === null ? '—' : cm.lag.toFixed(2) + ' s') + ' | nümunə: ' + cm.nA + ' / ' + cm.nB);
+      o.push('  Müqayisə: ' + (cm.valid ? 'etibarlıdır (Δt ≤ ' + cm.maxDt.toFixed(2) + ' s)' : 'ETİBARSIZ: ' + cm.reason));
+    }
+    if (rep.focusAdvice) o.push('  Tövsiyə: P0420 üçün O2 Diaqnostika bölməsində "Fokus rejimi" ilə ayrıca test edin. Fokus rejiminin nəticələri bu ümumi rejim hesabatı ilə qarışdırılmamalıdır.');
+    var ct = rep.cat;
+    if (ct && (ct.s1 || ct.s2)) {
+      o.push('', 'Katalizator temperaturu (yalnız əlavə sübut; təsdiqlənmiş hədd yoxdur, sağlam/nasaz kimi qiymətləndirilmir):');
+      [['Sensor 1 (PID 3C)', ct.s1], ['Sensor 2 (PID 3E)', ct.s2]].forEach(function (g) { o.push('  ' + g[0] + ': ' + (g[1] ? g[1].avg.toFixed(0) + ' °C (min ' + g[1].min.toFixed(0) + ', maks ' + g[1].max.toFixed(0) + ', nümunə ' + g[1].n + ', ' + g[1].basis + ')' : 'oxunmayıb')); });
+      o.push('  Fərq (Sensor 2 − Sensor 1): ' + (ct.delta === null ? 'hesablanmadı (hər iki sensor oxunmayıb)' : ct.delta.toFixed(0) + ' °C') + ' | PID-lər növbə ilə oxunduğu üçün orta qiymətlər fərqidir, eyni anda ölçmə deyil');
+    }
+    o.push('', '11. Xəta kodları (statuslar ayrı):');
+    (rep.dtcLines ? rep.dtcLines : ['  ' + (rep.codes.join(', ') || 'oxunmayıb və ya yoxdur')]).forEach(function (l) { o.push('  ' + l); });
+    (rep.codeInfo || []).forEach(function (ci) { if (ci.status && ci.status.length) o.push('  ' + ci.code + ' statusu: ' + ci.status.join(' + ')); });
     o.push('', '12. Ümumi nəticə: ' + rep.concl);
     if (rep.ev.length) { o.push('', 'Hadisələr:'); rep.ev.forEach(function (e) { o.push('  ' + e.s + ' s: ' + e.t); }); }
     return o.join('\n');
