@@ -30,6 +30,20 @@ window.OBD = (function () {
     return null;
   }
 
+  // Bir neçə ECU (7E8 mühərrik, 7E9 ötürmə) eyni 0100/0120 sorğusuna cavab verə bilər; cavab sırası sabit deyil.
+  // Dəstək maskası üçün ən çox PID bildirən (mühərrik) cavab seçilir ki, nəticə sıradan asılı olmasın.
+  function parseMaskBest(lines, pid) {
+    var want = '41' + pid.toUpperCase(), best = null, bestN = -1;
+    for (var i = 0; i < lines.length; i++) {
+      var one = parsePid([lines[i]], pid);
+      if (!one || one.length < 4) continue;
+      var n = 0;
+      for (var j = 0; j < 4; j++) for (var k = 0; k < 8; k++) if (one[j] & (1 << k)) n++;
+      if (n > bestN) { bestN = n; best = one; }
+    }
+    return best;
+  }
+
   function candidates(services) {
     var STD = /^0000(1800|1801|180a)/i, chars = [];
     services.forEach(function (s) {
@@ -90,7 +104,7 @@ window.OBD = (function () {
     while (true) {
       var pid = hex2(base);
       var lines = await ELM.send('01' + pid, base === 0 ? 15000 : 3000);
-      var b = parsePid(lines, pid);
+      var b = parseMaskBest(lines, pid);
       if (!b || b.length < 4) {
         if (base === 0) {
           S.error = 'ECU cavab vermir: ' + (lines.join(' ') || 'cavab yoxdur') + '. Açarın ON vəziyyətdə olduğunu yoxlayın.';
@@ -267,3 +281,118 @@ window.OBD = (function () {
     startPoll: startPoll, stopPoll: stopPoll, setSelected: setSelected
   };
 })();
+
+// AC OBD: Mode 06 etibarlı dekodlaşdırma + xam log. Əlavə moduldur: OBD.mode06Read-i eyni formatda əvəz edir.
+// obd-extra.js-dən SONRA yüklənməlidir.
+(function () {
+  'use strict';
+  var RAW = [], MAXRAW = 3000;
+  function hex(n) { return ('0' + n.toString(16)).slice(-2).toUpperCase(); }
+  function hexs(a) { return a.map(hex).join(' '); }
+  function bytes(h) { var o = []; for (var i = 0; i + 1 < h.length; i += 2) o.push(parseInt(h.substr(i, 2), 16)); return o; }
+  function s16(n) { return n > 32767 ? n - 65536 : n; }
+
+  // Bütün ELM cavabları (Mode 01 daxil) böyük, ayrıca jurnalda saxlanır. Log (400 sətir) bunu itirir.
+  window.RawLog = {
+    add: function (cmd, lines) { RAW.push({ t: new Date().toISOString(), cmd: cmd, lines: lines }); if (RAW.length > MAXRAW) RAW.shift(); },
+    all: function () { return RAW.slice(); },
+    clear: function () { RAW = []; },
+    text: function () { return RAW.map(function (e) { return e.t + ' TX ' + e.cmd + '\n' + (e.lines || []).map(function (l) { return '    RX ' + l; }).join('\n'); }).join('\n'); }
+  };
+  if (window.ELM && !ELM.rawWrapped) {
+    var orig = ELM.send;
+    ELM.send = function (cmd, t) {
+      return orig(cmd, t).then(function (l) { RawLog.add(cmd, l); return l; }, function (e) { RawLog.add(cmd, ['ERR ' + e.message]); throw e; });
+    };
+    ELM.rawWrapped = true;
+  }
+
+  // ISO-TP: "01C" uzunluq sətri + "N:" çərçivələr. Padding uzunluğa görə kəsilir (təxminlə yox).
+  function reassemble(lines) {
+    var msgs = [], cur = null, len = null;
+    function flush() {
+      if (cur === null) return;
+      var h = cur, complete = true;
+      if (len !== null) { complete = h.length >= len * 2; h = h.slice(0, len * 2); }
+      msgs.push({ hex: h, len: len, complete: complete });
+      cur = null; len = null;
+    }
+    (lines || []).forEach(function (l) {
+      var s = String(l).replace(/\s/g, '').toUpperCase(), m;
+      if (!s || /[G-Z?]/.test(s)) return;
+      if (/^[0-9A-F]{3}$/.test(s)) { flush(); len = parseInt(s, 16); cur = ''; return; }
+      m = /^[0-9A-F]:([0-9A-F]*)$/.exec(s);
+      if (m) { if (cur === null) cur = ''; cur += m[1]; return; }
+      flush(); cur = s; flush();
+    });
+    flush();
+    return msgs;
+  }
+
+  function layoutOf(p, mid) {
+    var i, ok = p.length >= 9 && p.length % 9 === 0;
+    if (ok) { for (i = 0; i < p.length; i += 9) if (p[i] !== mid) ok = false; if (ok) return 'mid9'; }
+    if (p.length >= 9 && (p.length - 1) % 8 === 0 && p[0] === mid) return 'mid1';
+    return null;
+  }
+
+  // Yalnız təsdiqlənmiş istehsalçı/standart xəritələr bura əlavə edilir: açar "MID:TID:UASID".
+  // Dəyər: { name, failIfOut: true }. Boş olduqda heç bir test PASS/FAIL sayılmır (UNKNOWN qalır).
+  var MAP = {};
+  var MID_NAME = { 0x01: 'O2 sensor monitoru B1S1', 0x02: 'O2 sensor monitoru B1S2', 0x21: 'Katalizator monitoru B1' };
+
+  function decode(mid, d, trimmed, m, k) {
+    var tid = d[0], ua = d[1], sg = ua >= 0x80;
+    var rv = d[2] * 256 + d[3], rmn = d[4] * 256 + d[5], rmx = d[6] * 256 + d[7];
+    var cv = sg ? s16(rv) : rv, cmn = sg ? s16(rmn) : rmn, cmx = sg ? s16(rmx) : rmx;
+    var flags = [];
+    if (rv === 0xAAAA || rmn === 0xAAAA || rmx === 0xAAAA) flags.push('0xAAAA doldurucu');
+    if (rv === 0xFFFF) flags.push('dəyər 0xFFFF (xüsusi)');
+    if (rv === 0x7FFF) flags.push('dəyər 0x7FFF (xüsusi)');
+    var inv = cmn > cmx;
+    if (inv) flags.push('min > maks: dekodlaşdırma şübhəli');
+    var limit = (flags.length || inv) ? 'NA' : ((cv >= cmn && cv <= cmx) ? 'IN' : 'OUT');
+    var map = MAP[hex(mid) + ':' + hex(tid) + ':' + hex(ua)] || null, status = 'UNKNOWN';
+    if (map && limit !== 'NA') status = (limit === 'IN') ? 'PASS' : (map.failIfOut ? 'FAIL' : 'UNKNOWN');
+    return {
+      mid: mid, tid: tid, unit: ua, uasid: ua, v: cv, mn: cmn, mx: cmx, signed: sg,
+      ok: cv >= cmn && cv <= cmx,            // köhnə sahə (yalnız hədlər arası), nəticə deyil
+      limit: limit, status: status, flags: flags, name: map ? map.name : null,
+      mapped: !!map, ecu: null,               // ATH0 olduğu üçün ECU ünvanı məlum deyil
+      rawHex: hex(mid) + ' ' + hexs(d), rawVal: hex(d[2]) + hex(d[3]), rawMin: hex(d[4]) + hex(d[5]), rawMax: hex(d[6]) + hex(d[7]),
+      decodeConf: trimmed ? 'orta' : (m.len !== null ? 'yüksək' : 'yüksək (tək çərçivə)')
+    };
+  }
+
+  function parse06(lines, mid) {
+    var M = hex(mid), res = { mid: mid, midName: MID_NAME[mid] || null, tests: [], notes: [], layout: null };
+    reassemble(lines).forEach(function (m) {
+      if (m.hex.indexOf('46' + M) !== 0) return;
+      var p = bytes(m.hex).slice(1), trimmed = false, lay = layoutOf(p, mid);
+      if (!m.complete) res.notes.push('Natamam ISO-TP mesajı');
+      if (!lay && m.len === null) {
+        var c = p.slice(); while (c.length && c[c.length - 1] === 0xAA) c.pop();
+        lay = layoutOf(c, mid); if (lay) { p = c; trimmed = true; }
+      }
+      if (!lay) { res.notes.push('Struktur uyğun gəlmir, dekodlaşdırılmadı: ' + hexs(p)); return; }
+      res.layout = lay;
+      var n = lay === 'mid9' ? p.length / 9 : (p.length - 1) / 8;
+      for (var i = 0; i < n; i++) {
+        var s = lay === 'mid9' ? i * 9 + 1 : 1 + i * 8;
+        res.tests.push(decode(mid, p.slice(s, s + 8), trimmed, m, i));
+      }
+    });
+    return res;
+  }
+
+  async function mode06Read(mid) {
+    var cmd = '06' + hex(mid), lines = await ELM.send(cmd, 5000);
+    var r = parse06(lines, mid);
+    r.cmd = cmd; r.rawLines = lines.slice(); r.t = new Date().toISOString();
+    return r;
+  }
+  window.Mode06 = { parse: parse06, reassemble: reassemble, MAP: MAP };
+  if (window.OBD) { OBD.parse06 = parse06; OBD.mode06Read = mode06Read; }
+})();
+
+
