@@ -192,7 +192,8 @@
   /* ---------- Qrup 8: adapter simulyasiyası (yalnız adapter qoşulu deyilsə) ---------- */
   async function tSim(t) {
     t.group('Adapter simulyasiyası (sahte ECU ilə)');
-    var oldWrite = Transport.write, oldAdd = Log.add, oldProto = S.protocol, oldSupported = S.supported;
+    var oldWrite = Transport.write, oldAdd = Log.add, oldProto = S.protocol, oldSupported = S.supported, oldValues = S.values;
+    S.values = {}; S.sim = true; // saxta ECU məlumatı real göstəricilərə qarışmasın
     var script = function () { return null; };
     Log.add = function () {};
     Transport.write = async function (s) {
@@ -257,6 +258,7 @@
     } finally {
       try { ELM.abort('selftest'); } catch (e) {}
       Transport.write = oldWrite; Log.add = oldAdd; S.protocol = oldProto; S.supported = oldSupported;
+      S.values = oldValues; S.sim = false;
     }
   }
 
@@ -334,3 +336,4 @@
   apply();
   window.SelfTest = { run: runAll, result: function () { return res; } };
 })();
+
