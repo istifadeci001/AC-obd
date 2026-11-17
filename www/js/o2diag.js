@@ -20,7 +20,8 @@ window.O2Diag = (function () {
       var a = hex2(0x14 + i), b = hex2(0x24 + i), c = hex2(0x34 + i);
       if (!P[a]) P[a] = { az: 'O2 sensoru (gərginlik)', en: 'O2 Sensor (voltage)', unit: 'V', fix: 3, dec: function (x) { return { v: x[0] / 200 }; } };
       if (!P[b]) P[b] = { az: 'O2 sensoru (lambda, geniş diapazon)', en: 'O2 Sensor (lambda)', unit: 'λ', fix: 3, dec: function (x) { return { v: (x[0] * 256 + x[1]) / 32768 }; } };
-      if (!P[c]) P[c] = { az: 'O2 sensoru (lambda, cərəyanlı)', en: 'O2 Sensor (lambda, current PID)', unit: 'λ', fix: 3, dec: function (x) { return { v: (x[0] * 256 + x[1]) / 32768 }; } };
+      // PID 34–3B: 4 bayt. A,B = lambda (λ = (256A+B)/32768); C,D = cərəyan (mA = (256C+D)/256 − 128). Natamam cavabdan nəticə çıxarılmır.
+      if (!P[c]) P[c] = { az: 'O2 sensoru (lambda, cərəyanlı)', en: 'O2 Sensor (lambda, current PID)', unit: 'λ', fix: 3, dec: function (x) { if (!x || x.length < 4) return { v: null, invalid: 'natamam cavab: ' + (x ? x.length : 0) + ' bayt, 4 bayt lazımdır' }; return { v: (x[0] * 256 + x[1]) / 32768, aux: { cur: (x[2] * 256 + x[3]) / 256 - 128, curUnit: 'mA' } }; } };
     }
   })();
 
@@ -165,6 +166,7 @@ window.O2Diag = (function () {
     var fh = health(inp, fr, 'front'), rh = health(inp, rr, 'rear');
     var out = { results: [], missing: [], notes: [], disclaimer: DISCLAIMER, advice: 'Proqram P0420 koduna görə katalizatorun dəyişdirilməsini tövsiyə etmir. Əvvəl misfire, qarışıq, egzoz sızması və sensorlar istisna edilməli, katalizatorun fiziki vəziyyəti yoxlanmalıdır.' };
     var idleSec = secs(inp, 'idle'), hiSec = secs(inp, 'r2500');
+    if (inp.modeReset) out.notes.push('Test zamanı rejim (Fokus ↔ Ümumi) dəyişdirilib: əvvəlki rejimin nümunələri ayrıca arxivləşdirilib və bu nəticəyə qarışdırılmayıb. Nəticə yalnız dəyişiklikdən sonrakı rejimin nümunələrinə əsaslanır.');
 
     /* misfire */
     var mis = res('mis', 'Misfire (yanma buraxma) ehtimalı');
@@ -318,7 +320,7 @@ window.O2Diag = (function () {
         if (codes && (codes.indexOf('P0420') >= 0)) { cp += 1; cat.evidence.push('ECU-da P0420 var (tək başına katalizatoru sübut etmir).'); }
         else if (codes) cat.evidence.push('P0420 ECU-da yoxdur.');
         if (m6) {
-          var failT = m6.tests.filter(function (t) { return t.status === 'FAIL'; }), okT = m6.tests.filter(function (t) { return t.status === 'PASS'; }), unkT = m6.tests.filter(function (t) { return t.status === 'UNKNOWN'; });
+          var failT = m6.tests.filter(function (t) { return t.status === 'FAIL' || (t.status === undefined && !t.ok); }), okT = m6.tests.filter(function (t) { return t.status === 'PASS' || (t.status === undefined && t.ok); }), unkT = m6.tests.filter(function (t) { return t.status === 'UNKNOWN'; });
           cat.measured.push('Mode 06 MID 21 (B1 katalizator monitoru): ' + m6.tests.length + ' test, təsdiqlənmiş uğursuz ' + failT.length + ', xəritələnməmiş (UNKNOWN) ' + unkT.length + ': xalda nəzərə alınmır');
           if (failT.length) { cp += 3; cat.evidence.push('ECU-nun öz katalizator monitoru həddi aşıb (' + failT.length + ' test, MID 21).'); }
           else if (okT.length) cat.evidence.push('ECU-nun öz katalizator monitoru testi hədlər daxilindədir (xam miqyas, təfsir məhduddur).');
@@ -463,6 +465,10 @@ window.O2Diag = (function () {
   }
   function setFocus(f) {
     if (!st.on) return;
+    if (!!f !== st.focus && (st.rpmH.length || Object.keys(st.all).length)) { // nümunələr rejimlər arasında qarışmasın: köhnəni arxivləşdirib təzədən topla
+      var old = st; st = newState(); st.ident = old.ident; st.m06 = old.m06; st.m06Err = old.m06Err; st.on = true; st.t0 = Date.now(); st.focusUsed = old.focusUsed;
+      st.modeReset = true; st.archive = { focus: old.focus, t0: old.t0, reg: old.reg, until: Date.now() };
+    }
     st.focus = !!f; if (f) st.focusUsed = true;
     st.ids = idsFor(st.focus);
     OBD.startPoll(st.ids);
@@ -481,7 +487,7 @@ window.O2Diag = (function () {
     return got ? out : null;
   }
   function collect() {
-    return { sensors: st.ident || identify(OBD.supported, window.Adapter && Adapter.map ? Adapter.map() : null), reg: st.reg, supported: OBD.supported, codes: codesOf(window.Session && Session.ctx.dtc), m06: st.m06, focusUsed: st.focusUsed };
+    return { sensors: st.ident || identify(OBD.supported, window.Adapter && Adapter.map ? Adapter.map() : null), reg: st.reg, supported: OBD.supported, codes: codesOf(window.Session && Session.ctx.dtc), m06: st.m06, focusUsed: st.focusUsed, modeReset: !!st.modeReset, archive: st.archive || null };
   }
   async function readMode06() {
     if (st.on) throw new Error('Əvvəl testi dayandırın.');
