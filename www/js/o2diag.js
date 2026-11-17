@@ -318,8 +318,8 @@ window.O2Diag = (function () {
         if (codes && (codes.indexOf('P0420') >= 0)) { cp += 1; cat.evidence.push('ECU-da P0420 var (tək başına katalizatoru sübut etmir).'); }
         else if (codes) cat.evidence.push('P0420 ECU-da yoxdur.');
         if (m6) {
-          var failT = m6.tests.filter(function (t) { return !t.ok; }), okT = m6.tests.filter(function (t) { return t.ok; });
-          cat.measured.push('Mode 06 MID 21 (B1 katalizator monitoru): ' + m6.tests.length + ' test, uğursuz ' + failT.length);
+          var failT = m6.tests.filter(function (t) { return t.status === 'FAIL'; }), okT = m6.tests.filter(function (t) { return t.status === 'PASS'; }), unkT = m6.tests.filter(function (t) { return t.status === 'UNKNOWN'; });
+          cat.measured.push('Mode 06 MID 21 (B1 katalizator monitoru): ' + m6.tests.length + ' test, təsdiqlənmiş uğursuz ' + failT.length + ', xəritələnməmiş (UNKNOWN) ' + unkT.length + ': xalda nəzərə alınmır');
           if (failT.length) { cp += 3; cat.evidence.push('ECU-nun öz katalizator monitoru həddi aşıb (' + failT.length + ' test, MID 21).'); }
           else if (okT.length) cat.evidence.push('ECU-nun öz katalizator monitoru testi hədlər daxilindədir (xam miqyas, təfsir məhduddur).');
         }
@@ -502,3 +502,4 @@ window.O2Diag = (function () {
     on: function (f) { subs.push(f); }, stats: stats, medDt: medDt, crossings: crossings
   };
 })();
+
