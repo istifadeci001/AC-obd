@@ -1,7 +1,7 @@
 window.LiveDiag = (function () {
   var S = OBD.S, timer = null, subs = [];
   // Vacib göstəricilər (RPM, sürət, temperatur, trim, O2) əvvəldə olmalıdır: limit dolanda sondakılar atılır
-  var PRI = ['0C', '0D', '05', '06', '07', '04', '0B', '1F', '03', '14', '15', '24', '25', '33', '0F', '11', '10', '0E', '44', '42', '47', '49', '08', '09', '2C', '2D', '2F'];
+  var PRI = ['0C', '0D', '05', '06', '07', '04', '14', '15', '24', '25', '34', '3C', '3E', '0B', '1F', '03', '11', '33', '0F', '10', '0E', '44', '42', '47', '49', '08', '09', '2C', '2D', '2F'];
   var MAXP = 14;
   var V = { N: 'Normal', S: 'Şübhəli', P: 'Problem ehtimalı', U: 'Məlumat kifayət deyil' };
   (function () {
@@ -13,7 +13,7 @@ window.LiveDiag = (function () {
     add('52', 'Etanol yanacaq faizi', 'Ethanol Fuel %', '%', 1, function (b) { return b[0] * 100 / 255; });
   })();
   function blank() {
-    return { on: false, dur: 60, t0: 0, t1: 0, ids: [], acc: {}, b: { all: {}, off: {}, run: {}, hot: {}, idle: {} }, ctxT: {}, ev: [], reads: 0, rate: 0, ctx: { eng: 'unk', mot: 'unk' }, rep: null, stale: {}, unsup: [], skipped: [], prob: false };
+    return { on: false, dur: 60, t0: 0, t1: 0, ids: [], acc: {}, b: { all: {}, off: {}, run: {}, hot: {}, idle: {}, steady: {} }, ctxT: {}, ev: [], reads: 0, rate: 0, ctx: { eng: 'unk', mot: 'unk' }, rep: null, stale: {}, unsup: [], skipped: [], prob: false };
   }
   var st = blank();
   function emit() { subs.forEach(function (f) { try { f(); } catch (e) {} }); }
@@ -24,6 +24,7 @@ window.LiveDiag = (function () {
     if (x.min === null || v < x.min) x.min = v;
     if (x.max === null || v > x.max) x.max = v;
   }
+  function rpmStable() { var q = st.rr; return !!q && q.length >= 5 && Math.max.apply(null, q) - Math.min.apply(null, q) <= 250; }
   function A(id) { var a = st.acc[id]; return a && a.n ? { n: a.n, avg: a.sum / a.n, min: a.min, max: a.max, v: a.v } : null; }
   function B(name, id) { var x = st.b[name][id]; return x && x.n ? { n: x.n, avg: x.sum / x.n, min: x.min, max: x.max } : null; }
   function val(id) { var a = st.acc[id]; return a && a.n && Date.now() - a.t < 5000 ? a.v : null; }
@@ -51,6 +52,7 @@ window.LiveDiag = (function () {
       var a = st.acc[id] || (st.acc[id] = { n: 0, sum: 0, min: null, max: null, v: null, t: 0, ser: [], ls: 0 });
       if (a.t === r.t) return;
       a.t = r.t; a.v = r.v; a.n++; a.sum += r.v;
+      if (id === '0C') { st.rr = st.rr || []; st.rr.push(r.v); if (st.rr.length > 6) st.rr.shift(); }
       if (a.min === null || r.v < a.min) a.min = r.v;
       if (a.max === null || r.v > a.max) a.max = r.v;
       if (now - a.ls >= 1000) { a.ser.push(r.v); a.ls = now; if (a.ser.length > 1800) a.ser.shift(); }
@@ -60,7 +62,7 @@ window.LiveDiag = (function () {
       if (rpm !== null && rpm < 100) bucket('off', id, r.v);
       else if (rpm !== null && rpm > 400) {
         bucket('run', id, r.v);
-        if (clt !== null && clt >= 80) { bucket('hot', id, r.v); if (spd === 0 && rpm < 1400) bucket('idle', id, r.v); }
+        if (clt !== null && clt >= 80) { bucket('hot', id, r.v); if (spd === 0 && rpm < 1400 && rpmStable()) bucket('idle', id, r.v); if (st.ctx && st.ctx.mot === 'cruise' && spd !== null && spd >= 20) bucket('steady', id, r.v); }
       }
     });
   }
@@ -180,7 +182,11 @@ window.LiveDiag = (function () {
       var q = window.Adapter ? Adapter.pos(id) : null, k = window.Adapter ? Adapter.kind(id) : null, h = B('hot', id), nmx = nm(id);
       if (!q) { add(mk(id, nmx, V.U, 'Sensorun mövqeyi PID 13/1D ilə təsdiqlənməyib, qiymətləndirmə aparılmadı')); return; }
       if (!h || h.n < 20) { add(mk(id, nmx, V.U, 'İsti mühərrik üçün kifayət qədər nümunə yoxdur')); return; }
-      var rg = h.max - h.min;
+      var rg = h.max - h.min, hs = B('steady', id);
+      if (k === 'narrow' && q.pos === 'B1S2') {
+        if (!hs || hs.n < 15) { add(mk(id, nmx, V.U, 'Arxa sensor üçün sabit sürətli (≥20 km/saat, isti mühərrik) kifayət qədər nümunə yoxdur: yavaşlama zamanı yanacaq kəsilməsi 0 V verir və nəticəni pozur')); return; }
+        rg = hs.max - hs.min;
+      }
       if (k === 'narrow' && q.pos === 'B1S1') add(mk(id, nmx, rg >= 0.5 ? V.N : (rg >= 0.25 ? V.S : V.P), 'Ön sensor isti mühərrikdə tez dəyişməlidir (aralıq ≥0.5 V). Açıq döngə də ola bilər (ümumi)', rg >= 0.5 ? {} : { causes: ['Sensorun yavaşlaması', 'Açıq döngə rejimi', 'Qızdırıcı dövrəsi'], check: ['Sensoru qrafikdə izləyin', 'Yanacaq sisteminin vəziyyətinə (PID 03) baxın'], sys: ['Yanacaq korreksiyası'] }, h));
       else if (k === 'narrow' && q.pos === 'B1S2') add(mk(id, nmx, rg <= 0.4 ? V.N : V.S, 'Arxa sensor ön sensora nisbətən sabit olmalıdır (aralıq ≤0.4 V, ümumi)', rg <= 0.4 ? {} : { causes: ['Katalizatorun oksigen saxlama qabiliyyətinin azalması', 'Arxa sensor', 'Egzoz sızması'], check: ['Ön və arxa sensoru eyni qrafikdə müqayisə edin', 'Misfire və yanacaq korreksiyasını yoxlayın'], sys: ['Katalizator', 'Egzoz'], note: 'Tək başına katalizatorun xarab olduğunu sübut etmir.' }, h));
       else if (k === 'wide' && q.pos === 'B1S1') add(mk(id, nmx, (h.avg >= 0.97 && h.avg <= 1.03) ? V.N : ((h.avg >= 0.93 && h.avg <= 1.07) ? V.S : V.P), 'İsti qapalı döngədə ortalama λ təxminən 1.00 (±0.03, ümumi)', (h.avg >= 0.97 && h.avg <= 1.03) ? {} : { causes: ['Hava və ya yanacaq təchizatı sapması', 'Sensor'], check: ['Yanacaq korreksiyalarını yoxlayın'], sys: ['Yanacaq-hava'] }, h));
@@ -221,7 +227,7 @@ window.LiveDiag = (function () {
       (probs.filter(function (p) { return p.it; }).length ? ' Diqqət tələb edən: ' + probs.filter(function (p) { return p.it; }).slice(0, 3).map(function (p) { return p.it.name; }).join('; ') + '.' : ' Ölçülmüş canlı məlumatda aydın sapma aşkarlanmadı.');
     concl += codes.length ? ' ECU-da xəta kodu var: ' + codes.join(', ') + '. Canlı göstəricilərin normal olması kodu ləğv etmir.' : (d ? '' : ' Xəta kodları oxunmayıb, bu hesabat kodların olmadığını göstərmir.');
     concl += ' Bu nəticə yalnız ölçülmüş məlumata əsaslanır və qəti diaqnoz deyil.';
-    return { items: items, probs: probs, codes: codes, cnt: cnt, el: el, ctxs: ctxs, ev: st.ev.slice(), reads: st.reads, rate: st.rate, nodata: nodata, unsup: st.unsup, skipped: st.skipped || [], codeInfo: codeInfo, ai: ai, concl: concl, t: new Date(st.t0).toISOString() };
+    return { items: items, probs: probs, codes: codes, cnt: cnt, el: el, ctxs: ctxs, ev: st.ev.slice(), reads: st.reads, rate: st.rate, nodata: nodata, ids: st.ids.slice(), unsup: st.unsup, skipped: st.skipped || [], codeInfo: codeInfo, ai: ai, concl: concl, t: new Date(st.t0).toISOString() };
   }
   function fmt(it) { return it.avg === undefined || it.avg === null ? '—' : it.avg.toFixed(it.fix) + ' ' + it.unit + ' (min ' + it.min.toFixed(it.fix) + ', maks ' + it.max.toFixed(it.fix) + ')'; }
   function text(rep, ctx) {
@@ -232,6 +238,10 @@ window.LiveDiag = (function () {
     o.push('3. Adapter: ' + (S0.deviceName || '—') + ' | ' + (S0.elmVersion || '—') + ' | Protokol: ' + (S0.protocol || '—'));
     o.push('4. İş rejimi (saniyə): ' + (rep.ctxs.length ? rep.ctxs.map(function (c) { return c.k + '=' + c.s; }).join(', ') : '—'));
     o.push('5. Oxunan PID: ' + (rep.items.length) + ' | Oxuma: ' + rep.reads + ', tezlik ~' + rep.rate.toFixed(1) + '/san | Cavabsız: ' + (rep.nodata.join(', ') || 'yoxdur'));
+    o.push('   Sorğulanan PID-lər: ' + (rep.ids && rep.ids.length ? rep.ids.join(' ') : '—'));
+    if (rep.skipped && rep.skipped.length) o.push('   Yük limiti səbəbilə sorğulanmayan (nasazlıq deyil): ' + rep.skipped.join(' '));
+    if (rep.unsup && rep.unsup.length) o.push('   ECU dəstəkləmir (nasazlıq deyil): ' + rep.unsup.join(' '));
+    if (rep.nodata && rep.nodata.length) o.push('   Sorğulanıb, dəyər gəlməyib: ' + rep.nodata.join(' '));
     [['6. Normal göstəricilər', V.N], ['7. Şübhəli göstəricilər', V.S]].forEach(function (g) {
       o.push('', g[0] + ':');
       var l = rep.items.filter(function (i) { return i.verdict === g[1]; });
@@ -261,3 +271,4 @@ window.LiveDiag = (function () {
   }
   return { tick: tick, start: start, stop: stop, state: function () { return st; }, on: function (f) { subs.push(f); }, text: text, fmt: fmt, assess: assess, V: V };
 })();
+
