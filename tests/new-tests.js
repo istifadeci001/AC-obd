@@ -148,7 +148,7 @@ function wire(ctx, script) { // sahte adapter
   // ===== F. RPM sabitlik filtri (boş gediş) =====
   console.log('\n[F] Yeni RPM filtri');
   const run = async (rpmFn) => {
-    const k = mk(LD); let n = 0;
+    const k = mk(LD); k.AutoLog.setAuto(false); let n = 0;
     wire(k, cmd => cmd === '010C' ? '41 0C ' + rpmFn(n++) + '\r\r>' : cmd === '010D' ? '41 0D 00\r\r>' : cmd === '0105' ? '41 05 82\r\r>' : cmd === 'ATRV' ? '12.6V\r\r>' : null);
     k.OBD.S.state = 'ecu'; k.OBD.S.supported.push('0C', '0D', '05'); k.LiveDiag.start(60); await sleep(1500);
     const s2 = k.LiveDiag.state(), idle = s2.b.idle['0C']; k.LiveDiag.stop(false); return idle ? idle.n : 0;
