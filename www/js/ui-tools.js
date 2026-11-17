@@ -104,6 +104,7 @@
     return h;
   };
 
+  function m6txt(t){var lm={IN:'ECU hədləri daxilində',OUT:'ECU hədlərindən kənarda',NA:'müqayisə edilmir'};return '<span class="'+(t.limit==='IN'?'ok':(t.limit==='OUT'?'no':'sm'))+'">'+lm[t.limit]+' · '+t.status+(t.flags&&t.flags.length?' · '+t.flags.join(', '):'')+'</span><br><span class="sm">xam: '+t.rawHex+'</span>';}
   screens.mode06 = function () {
     var h = h2('Mode 06 (On-board Monitoring, xam nəticələr)') + need() + stat();
     h += card('<p>Mode 06 monitor testlərinin xam nəticələrini göstərir. <b>Miqyas və test adları tətbiq olunmayıb</b>: dəyər və hədlər xam ədədlərdir, ✔/✖ yalnız dəyərin hədlər arasında olub-olmamasını göstərir. Nəticəni usta ilə birlikdə qiymətləndirin.</p>' + btn('Oxu (ən çox 12 MID)', 'm06', dis()));
@@ -111,7 +112,7 @@
     if (r) {
       h += card('<p class="sm">' + esc(r.length + ' MID oxundu') + '</p>' + r.map(function (m) {
         return '<div class="gl"><b>MID ' + hex(m.mid) + '</b>' + (m.tests.length ? m.tests.map(function (t) {
-          return '<div class="sm">TID ' + hex(t.tid) + ' · vahid ' + hex(t.unit) + ' · dəyər ' + t.v + ' (' + t.mn + '…' + t.mx + ') <span class="' + (t.ok ? 'ok' : 'bad') + '">' + (t.ok ? '✔' : '✖') + '</span></div>';
+          return '<div class="sm">TID ' + hex(t.tid) + ' · UASID ' + hex(t.unit) + ' · dəyər ' + t.v + ' (' + t.mn + '…' + t.mx + ') ' + m6txt(t) + '</div>';
         }).join('') : '<div class="sm">nəticə yoxdur</div>') + '</div>';
       }).join(''));
     }
@@ -323,3 +324,4 @@
   addDrawer();
   apply();
 })();
+
