@@ -184,3 +184,29 @@ window.Session = (function () {
     csv: csv, currentCsv: currentCsv, reportText: reportText, share: share, copy: copy
   };
 })();
+
+// DTC statuslarının (Saxlanmış 03 / Gözləyən 07 / Daimi 0A) ayrı saxlanması üçün ümumi köməkçi: Canlı hesabat, AI hesabatı və sessiya eyni məlumatı istifadə edir.
+window.DtcStatus = (function () {
+  var KEYS = ['stored', 'pending', 'permanent'], LAB = { stored: 'Saxlanmış (03)', pending: 'Gözləyən (07)', permanent: 'Daimi (0A)' };
+  function summarize(d) {
+    var out = { read: { stored: false, pending: false, permanent: false }, codes: { stored: [], pending: [], permanent: [] }, byCode: {}, all: [] };
+    KEYS.forEach(function (k) {
+      var r = d && d[k];
+      if (!r || !r.ok) return;
+      out.read[k] = true;
+      (r.codes || []).forEach(function (c) {
+        if (out.codes[k].indexOf(c) < 0) out.codes[k].push(c);
+        (out.byCode[c] = out.byCode[c] || []).indexOf(k) < 0 && out.byCode[c].push(k);
+        if (out.all.indexOf(c) < 0) out.all.push(c);
+      });
+    });
+    return out;
+  }
+  function lines(d) {
+    var s = summarize(d);
+    return KEYS.map(function (k) { return LAB[k] + ': ' + (!s.read[k] ? 'oxunmayıb' : (s.codes[k].length ? s.codes[k].join(', ') : 'yoxdur')); });
+  }
+  function labelsOf(code, d) { var s = summarize(d); return (s.byCode[code] || []).map(function (k) { return LAB[k]; }); }
+  return { KEYS: KEYS, LAB: LAB, summarize: summarize, lines: lines, labelsOf: labelsOf };
+})();
+
