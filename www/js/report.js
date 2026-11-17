@@ -79,7 +79,7 @@ window.Report = (function () {
         L.push(x[0] + ': ' + (r && r.ok ? (r.codes.length ? r.codes.join(', ') : 'yoxdur') : 'oxunmadı (' + ((r && r.status) || 'cavab yoxdur') + ')'));
         if (r && r.ok) r.codes.forEach(function (c) { if (codesAll.indexOf(c) < 0) codesAll.push(c); });
       });
-      codesAll.forEach(function (c) { var e = window.DTC_DB && window.DTC_DB[c]; if (e) L.push('  ' + c + ': ' + (e.en || e.az || '')); });
+      codesAll.forEach(function (c) { var e = window.DTC_DB && window.DTC_DB[c]; if (e) L.push('  ' + c + ': ' + (e.en || e.az || '')); if (window.DtcStatus) L.push('  ' + c + ' statusu: ' + (DtcStatus.labelsOf(c, dd).join(' + ') || '—')); });
       L.push('Oxunma vaxtı: ' + (window.LocalTime ? LocalTime.full(dd.t) : dd.t));
       var fz = window.Session && Session.ctx.freeze;
       if (fz && fz.dtc) L.push('Freeze Frame kodu: ' + fz.dtc);
@@ -91,8 +91,8 @@ window.Report = (function () {
       var r = OBD.values[id], p = PIDS[id]; if (!p) return;
       if (r.v === null) { nod.push(id); return; }
       real++;
-      var d = p.fix === undefined ? 1 : p.fix, old = r.t && Date.now() - r.t > 10000;
-      L.push(id + ' ' + p.en + (old ? ' [KÖHNƏ: oxuma dayanıb]' : '') + ': son ' + (r.txt || f(r.v, d)) + ' ' + p.unit + ' | min ' + f(r.min, d) + ' | maks ' + f(r.max, d) + ' | orta ' + f(avg(r.hist), d) + ' | nümunə ' + r.hist.length);
+      var d = p.fix === undefined ? 1 : p.fix, old = r.t && Date.now() - r.t > 10000, sx = OBD.statusOf ? OBD.statusOf(id) : null;
+      L.push(id + ' ' + p.en + (sx && sx.status !== 'REAL' ? ' [' + sx.status + (sx.reason ? ': ' + sx.reason : '') + ']' : (old ? ' [KÖHNƏ: oxuma dayanıb]' : (sx ? ' [REAL]' : ''))) + ': son ' + (r.txt || f(r.v, d)) + ' ' + p.unit + ' | min ' + f(r.min, d) + ' | maks ' + f(r.max, d) + ' | orta ' + f(avg(r.hist), d) + ' | nümunə ' + r.hist.length);
     });
     if (!real) L.push('Real dəyər oxunmayıb. Əvvəl Canlı bölməsində "Başlat" basın.');
     L.push('');
@@ -159,3 +159,4 @@ window.Report = (function () {
     }
   };
 })();
+
