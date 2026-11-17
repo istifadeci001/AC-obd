@@ -204,25 +204,29 @@ window.OBD = (function () {
 
   async function readOne(id) {
     var p = window.PIDS[id];
-    var rec = S.values[id] || (S.values[id] = { v: null, min: null, max: null, hist: [], nodata: false });
+    var rec = S.values[id] || (S.values[id] = { v: null, min: null, max: null, hist: [], nodata: false, n: 0, bad: 0, nd: 0, invalid: '', ts: [], aux: null });
     if (id === 'RV') {
       var l = await ELM.send('ATRV', 2000);
       var m = /([\d.]+)\s*V/i.exec(l.join(' '));
-      if (!m) { rec.nodata = true; return; }
+      if (!m) { rec.nodata = true; rec.nd = (rec.nd || 0) + 1; return; }
       store(rec, { v: parseFloat(m[1]) });
       return;
     }
     var lines = await ELM.send('01' + id, 2500);
     var b = parsePid(lines, id);
-    if (!b) { rec.nodata = true; return; }
+    if (!b) { rec.nodata = true; rec.nd = (rec.nd || 0) + 1; return; }
     var r;
     try { r = p.dec(b); } catch (e) { r = null; }
-    if (!r || !isFinite(r.v)) { rec.nodata = true; return; }
+    if (r && r.invalid) { rec.nodata = true; rec.invalid = String(r.invalid); rec.bad = (rec.bad || 0) + 1; return; }
+    if (!r || !isFinite(r.v)) { rec.nodata = true; rec.nd = (rec.nd || 0) + 1; return; }
     store(rec, r);
   }
 
   function store(rec, r) {
+    if (S.sim) return; // simulyasiya (selftest) məlumatı real göstəricilərə düşmür
     rec.v = r.v; rec.txt = r.txt; rec.nodata = false; rec.t = Date.now();
+    rec.invalid = ''; rec.n = (rec.n || 0) + 1; rec.aux = r.aux || null;
+    rec.ts = rec.ts || []; rec.ts.push(rec.t); if (rec.ts.length > 120) rec.ts.shift();
     if (rec.min === null || r.v < rec.min) rec.min = r.v;
     if (rec.max === null || r.v > rec.max) rec.max = r.v;
     rec.hist.push(r.v);
@@ -395,4 +399,34 @@ window.OBD = (function () {
   if (window.OBD) { OBD.parse06 = parse06; OBD.mode06Read = mode06Read; }
 })();
 
+// ---- PID statusları (REAL/STALE/UNSUPPORTED/INVALID/UNKNOWN) və sensorlar arası zaman fərqi ----
+(function () {
+  'use strict';
+  var STALE_MS = 8000, MAX_DT = 0.4;
+  function med(a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+  function dts(ts) { var d = []; for (var i = 1; i < ts.length; i++) d.push((ts[i] - ts[i - 1]) / 1000); return d; }
+  function statusOf(id, now) {
+    now = now || Date.now();
+    var S = OBD.S, r = OBD.values[id];
+    if (S.sim) return { status: 'INVALID', reason: 'simulyasiya/saxta məlumat: real ECU göstəricisi deyil', n: 0, bad: 0, nodata: 0, age: null };
+    if (id !== 'RV' && OBD.supported && OBD.supported.length && OBD.supported.indexOf(id) < 0) return { status: 'UNSUPPORTED', reason: 'ECU bu PID-i dəstəkləmir (nasazlıq deyil)', n: 0, bad: 0, nodata: 0, age: null };
+    if (!r) return { status: 'UNKNOWN', reason: 'hələ sorğulanmayıb', n: 0, bad: 0, nodata: 0, age: null };
+    var n = r.n || 0, o = { n: n, bad: r.bad || 0, nodata: r.nd || 0, age: r.t ? (now - r.t) / 1000 : null };
+    if (r.invalid) { o.status = 'INVALID'; o.reason = r.invalid; return o; }
+    if (!n || r.v === null) { o.status = 'UNKNOWN'; o.reason = 'ECU-dan etibarlı cavab gəlməyib'; return o; }
+    if (r.nodata || now - r.t > STALE_MS) { o.status = 'STALE'; o.reason = r.nodata ? 'son sorğuya cavab gəlmədi, göstərilən dəyər köhnədir' : 'dəyər ' + Math.round((now - r.t) / 1000) + ' s əvvəl oxunub'; return o; }
+    o.status = 'REAL'; o.reason = ''; return o;
+  }
+  // a və b PID-lərinin median Δt-si və aralarındakı median zaman fərqi; tezlik kifayət etmirsə valid=false
+  function timing(a, b) {
+    var ra = OBD.values[a], rb = OBD.values[b], ta = (ra && ra.ts) || [], tb = (rb && rb.ts) || [];
+    var o = { a: a, b: b, dtA: med(dts(ta)), dtB: med(dts(tb)), lag: null, nA: ta.length, nB: tb.length, maxDt: MAX_DT, valid: false, reason: '' };
+    if (ta.length < 8 || tb.length < 8) { o.reason = 'nümunə sayı kifayət deyil (hər sensor üçün ≥8 lazımdır)'; return o; }
+    o.lag = med(ta.map(function (t) { var best = Infinity; tb.forEach(function (u) { var d = Math.abs(u - t); if (d < best) best = d; }); return best / 1000; }));
+    if (o.dtA > MAX_DT || o.dtB > MAX_DT) o.reason = 'median Δt > ' + MAX_DT.toFixed(2) + ' s: tezlik kifayət etmir, müqayisə etibarsızdır';
+    else o.valid = true;
+    return o;
+  }
+  OBD.statusOf = statusOf; OBD.timing = timing; OBD.med = med;
+})();
 
