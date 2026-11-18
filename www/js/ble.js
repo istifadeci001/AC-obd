@@ -1,0 +1,1 @@
+window.BleClient=window.BleClient||{};window.CapApp=window.CapApp||{addListener:function(){}};
