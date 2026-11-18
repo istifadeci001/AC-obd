@@ -1,0 +1,48 @@
+name: Zip-i tətbiq et (PR açır)
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip:
+        description: 'Zip faylının adı (repo kökündə)'
+        default: 'AC-OBD-project-obdex.zip'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip-i aç və üzərinə yaz
+        env:
+          Z: ${{ inputs.zip }}
+        run: |
+          set -e
+          test -f "$Z" || { echo "Zip tapılmadı: $Z"; exit 1; }
+          mkdir -p /tmp/new
+          unzip -q "$Z" -d /tmp/new
+          rm -rf /tmp/new/.github
+          cp -a /tmp/new/. ./
+          git rm -q -f "$Z"
+
+      - name: Branch və Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          set -e
+          git config user.name github-actions
+          git config user.email actions@github.com
+          B="obdex-import-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$B"
+          git add -A
+          git commit -m "OBDex oflayn baza inteqrasiyası"
+          git push origin "$B"
+          gh pr create --base "$BASE" --head "$B" \
+            --title "OBDex inteqrasiyası" \
+            --body "Files changed bölməsini yoxlayın, sonra Merge edin." \
+            || echo "PR avtomatik açılmadı. Branches bölməsindən $B üçün PR açın."
