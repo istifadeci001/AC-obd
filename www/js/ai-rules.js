@@ -52,7 +52,16 @@ window.AIRules = (function () {
     var H = {};
     V = V || {};
 
-    function hs(id) { return (V[id] && V[id].hist) ? V[id].hist : []; }
+    // Mühərrik işləmirsə (və ya RPM köhnədirsə) trim, O2, MAF, yük kimi göstəricilər diaqnostik nəticə üçün istifadə EDİLMİR:
+    // açar ON/mühərrik söndürülü vəziyyətdə bu dəyərlər sensor sağlamlığını göstərmir (real jurnalda O2 ön/arxa, lambda=1.000, trim=0).
+    var gate = false, EG = null;
+    if (window.EngineState) {
+      if (V['0C'] && V['0C'].t) { EG = EngineState.fromValues(V); gate = !EG.running; }
+      else A.missing.push('Mühərrik vəziyyəti bilinmir (RPM göstəricisi yoxdur): trim/O2 nəticələri məhdud etibarlıdır');
+    }
+    function engDep(id) { var n = parseInt(id, 16); return id === '06' || id === '07' || id === '10' || id === '43' || id === '44' || id === '04' || (n >= 0x14 && n <= 0x1B) || (n >= 0x24 && n <= 0x2B) || (n >= 0x34 && n <= 0x3B); }
+    if (gate) A.missing.push('Mühərrik işləmir və ya RPM köhnədir (' + EG.state + '): trim, O2, MAF və yük göstəricilərindən diaqnostik nəticə çıxarılmadı');
+    function hs(id) { if (gate && engDep(id)) return []; return (V[id] && V[id].hist) ? V[id].hist : []; }
     function ok(id, n) { return hs(id).length >= (n || 5); }
     function add(k, p, ev) { var x = H[k] || (H[k] = { key: k, score: 0, ev: [] }); x.score += p; x.ev.push(ev); }
     function an(k, text) { A.anomalies.push({ k: k, text: text }); }
@@ -82,7 +91,7 @@ window.AIRules = (function () {
         A.safety.push('Temperatur yüksəkdirsə mühərriki söndürün və soyumasını gözləyin; qızmış sistemi açmayın.');
       }
       var rt = hs('1F'), run = rt.length ? rt[rt.length - 1] : null;
-      if (run !== null && run > 600 && cl < 70) {
+      if (!gate && run !== null && run > 600 && cl < 70) {
         an('cold', 'Mühərrik ' + Math.round(run) + ' san işləyib, amma temperatur ' + f1(cl) + ' °C');
         add('thermo', 2, 'İşləmə vaxtı ' + Math.round(run) + ' san, temperatur ' + f1(cl) + ' °C');
       }
@@ -103,7 +112,7 @@ window.AIRules = (function () {
     }
 
     var vId = ok('42') ? '42' : (ok('RV') ? 'RV' : null);
-    if (vId && ok('0C')) {
+    if (!gate && vId && ok('0C')) {
       var rl = hs('0C');
       if (rl[rl.length - 1] > 500) {
         var vv = avg(hs(vId).slice(-30)), src = vId === 'RV' ? 'adapter ölçüsü' : 'ECU';

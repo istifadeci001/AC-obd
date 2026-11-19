@@ -308,6 +308,12 @@ window.OBD = (function () {
     ELM.send = function (cmd, t) {
       return orig(cmd, t).then(function (l) { RawLog.add(cmd, l); return l; }, function (e) { RawLog.add(cmd, ['ERR ' + e.message]); throw e; });
     };
+    var origEx = ELM.exclusive;
+    if (origEx) ELM.exclusive = function (fn) {
+      return origEx(function (tx) {
+        return fn({ send: function (cmd, t) { return tx.send(cmd, t).then(function (l) { RawLog.add(cmd, l); return l; }, function (e) { RawLog.add(cmd, ['ERR ' + e.message]); throw e; }); } });
+      });
+    };
     ELM.rawWrapped = true;
   }
 
@@ -346,13 +352,14 @@ window.OBD = (function () {
   var MID_NAME = { 0x01: 'O2 sensor monitoru B1S1', 0x02: 'O2 sensor monitoru B1S2', 0x21: 'Katalizator monitoru B1' };
 
   function decode(mid, d, trimmed, m, k) {
-    var tid = d[0], ua = d[1], sg = ua >= 0x80;
+    var tid = d[0], ua = d[1], reserved = (ua === 0x80 || ua === 0xFF), sg = ua > 0x80 && ua < 0xFF; // J1979: 01–7F işarəsiz, 81–FE işarəli, 80/FF rezerv
     var rv = d[2] * 256 + d[3], rmn = d[4] * 256 + d[5], rmx = d[6] * 256 + d[7];
     var cv = sg ? s16(rv) : rv, cmn = sg ? s16(rmn) : rmn, cmx = sg ? s16(rmx) : rmx;
     var flags = [];
     if (rv === 0xAAAA || rmn === 0xAAAA || rmx === 0xAAAA) flags.push('0xAAAA doldurucu');
     if (rv === 0xFFFF) flags.push('dəyər 0xFFFF (xüsusi)');
     if (rv === 0x7FFF) flags.push('dəyər 0x7FFF (xüsusi)');
+    if (reserved) flags.push('UASID 0x' + hex(ua) + ' rezerv/məlum deyil: dəyər xam saxlanıb');
     var inv = cmn > cmx;
     if (inv) flags.push('min > maks: dekodlaşdırma şübhəli');
     var limit = (flags.length || inv) ? 'NA' : ((cv >= cmn && cv <= cmx) ? 'IN' : 'OUT');
@@ -368,9 +375,21 @@ window.OBD = (function () {
     };
   }
 
+  // Mode 06 nəticəsini ekranda/hesabatda göstərmək üçün vahid mətn: heç vaxt "undefined" çıxmır.
+  // Xəritə (MAP) olmayan TID: UNKNOWN + xam HEX; PASS/FAIL yalnız təsdiqlənmiş xəritə ilə.
+  function fmt06(t) {
+    t = t || {};
+    var limit = t.limit === 'IN' || t.limit === 'OUT' || t.limit === 'NA' ? t.limit : 'NA';
+    var lm = { IN: 'ECU hədləri daxilində', OUT: 'ECU hədlərindən kənarda', NA: 'müqayisə edilmir' };
+    var st = (t.status === 'PASS' || t.status === 'FAIL') ? t.status : 'UNKNOWN';
+    return { limit: limit, limitText: lm[limit], status: st, raw: t.rawHex || '—', cls: limit === 'IN' ? 'ok' : (limit === 'OUT' ? 'no' : 'sm'),
+      name: t.name || 'UNKNOWN (TID xəritələnməyib)' };
+  }
+
   function parse06(lines, mid) {
-    var M = hex(mid), res = { mid: mid, midName: MID_NAME[mid] || null, tests: [], notes: [], layout: null };
+    var M = hex(mid), res = { mid: mid, midName: MID_NAME[mid] || null, tests: [], notes: [], layout: null, raw: [] };
     reassemble(lines).forEach(function (m) {
+      res.raw.push(m.hex); // xam HEX həmişə saxlanır (dekodlaşdırma alınmasa da)
       if (m.hex.indexOf('46' + M) !== 0) return;
       var p = bytes(m.hex).slice(1), trimmed = false, lay = layoutOf(p, mid);
       if (!m.complete) res.notes.push('Natamam ISO-TP mesajı');
@@ -383,7 +402,10 @@ window.OBD = (function () {
       var n = lay === 'mid9' ? p.length / 9 : (p.length - 1) / 8;
       for (var i = 0; i < n; i++) {
         var s = lay === 'mid9' ? i * 9 + 1 : 1 + i * 8;
-        res.tests.push(decode(mid, p.slice(s, s + 8), trimmed, m, i));
+        var rec = p.slice(s, s + 8);
+        if (rec.length < 8) { res.notes.push('Natamam qeyd atıldı: ' + hexs(rec)); continue; }
+        if (rec.every(function (x) { return x === 0xAA; })) { res.notes.push('Doldurucu (0xAA) qeydi atıldı'); continue; }
+        res.tests.push(decode(mid, rec, trimmed, m, i));
       }
     });
     return res;
@@ -395,7 +417,7 @@ window.OBD = (function () {
     r.cmd = cmd; r.rawLines = lines.slice(); r.t = new Date().toISOString();
     return r;
   }
-  window.Mode06 = { parse: parse06, reassemble: reassemble, MAP: MAP };
+  window.Mode06 = { parse: parse06, reassemble: reassemble, MAP: MAP, fmt: fmt06 };
   if (window.OBD) { OBD.parse06 = parse06; OBD.mode06Read = mode06Read; }
 })();
 

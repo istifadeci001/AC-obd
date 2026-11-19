@@ -43,10 +43,25 @@
     for (var i = 0; i < 32; i++) if (Math.floor(m / Math.pow(2, 31 - i)) % 2 === 1) out.push(base + i + 1);
     return out;
   }
-  async function raw(cmd, t) {
-    var c = clean(await ELM.send(cmd, t || 3000));
+  async function raw(cmd, t, tries) {
+    var l = tries ? await ELM.sendRetry(cmd, t || 3000, tries) : await ELM.send(cmd, t || 3000);
+    var c = clean(l);
     return { msgs: msgs(c), txt: txtOf(c) };
   }
+  // Eyni PID-ə bir neçə ECU cavab verə bilər. ATH0 ilə ECU ünvanı görünmür və sıra sabit deyil (real jurnalda
+  // 0101 cavabları növbə ilə dəyişirdi), ona görə birinci sətri götürmək əvəzinə HAMISINI qaytarırıq.
+  async function readAll(pid, tries) {
+    var r = await raw('01' + pid, 3000, tries), out = [];
+    r.msgs.forEach(function (x) {
+      if (x.indexOf('41' + pid) !== 0) return;
+      var b = bytesOf(x.slice(4));
+      if (b.length) out.push({ b: b, hex: x });
+    });
+    return out;
+  }
+  function bits(n) { var c = 0; while (n) { c += n & 1; n >>= 1; } return c; }
+  // PID 01: mühərrik ECU-su ən çox monitor dəstəkləyəndir (B bit0–2 + C). Bərabərlikdə seçim edilmir (ambiguous).
+  function monCount(b) { return bits((b[1] || 0) & 7) + bits(b[2] || 0); }
   async function readNum(pid) {
     var r = await raw('01' + pid, 3000);
     var f = r.msgs.filter(function (x) { return x.indexOf('41' + pid) === 0; })[0];
@@ -67,15 +82,15 @@
   async function readDtcs(mode) {
     var kind = await protoKind();
     if (kind === 'unknown') return { ok: false, codes: [], status: 'protokol bilinmir, kodlar səhv oxunmasın deyə oxuma edilmədi' };
-    var r = await raw(mode, 9000);
+    var r = await raw(mode, 9000, 1);
     var resp = ('0' + (parseInt(mode, 16) + 0x40).toString(16)).slice(-2).toUpperCase();
     var isCan = kind === 'can';
-    var got = false, codes = [];
+    var got = false, codes = [], reported = [], t = new Date().toISOString();
     r.msgs.forEach(function (x) {
       if (x.indexOf(resp) !== 0) return;
       got = true;
       var h = x.slice(2);
-      if (isCan) h = h.slice(2);
+      if (isCan) { reported.push(parseInt(h.slice(0, 2), 16)); h = h.slice(2); }
       var b = bytesOf(h);
       for (var i = 0; i + 1 < b.length; i += 2) {
         if (!b[i] && !b[i + 1]) continue;
@@ -83,8 +98,10 @@
         if (codes.indexOf(n) < 0) codes.push(n);
       }
     });
-    if (!got) return { ok: false, codes: [], status: r.txt.length ? r.txt.join(' ') : 'cavab yoxdur' };
-    return { ok: true, codes: codes, status: '' };
+    if (!got) return { ok: false, codes: [], status: r.txt.length ? r.txt.join(' ') : 'cavab yoxdur', t: t, mode: mode, count: 0, raw: r.msgs.slice() };
+    // count = bu statusda tapılan fərqli kodların sayı; reported = ECU-ların bildirdiyi sayğac (CAN), hər ECU üçün ayrı.
+    var sum = reported.reduce(function (a, n) { return a + (isNaN(n) ? 0 : n); }, 0);
+    return { ok: true, codes: codes, status: '', t: t, mode: mode, count: codes.length, reported: reported, consistent: !reported.length || sum === codes.length, raw: r.msgs.slice() };
   }
 
   async function clearDtcs() {
@@ -98,17 +115,24 @@
   async function freezeSupported() {
     try {
       var r = await raw('020000', 4000);
-      var f = r.msgs.filter(function (x) { return x.indexOf('420000') === 0; })[0];
-      if (!f) return null;
-      var b = bytesOf(f.slice(6));
-      if (b.length < 4) return null;
-      return maskList(b, 0).map(hex2);
+      var best = null, bn = -1;
+      r.msgs.filter(function (x) { return x.indexOf('420000') === 0; }).forEach(function (x) {
+        var b = bytesOf(x.slice(6));
+        if (b.length < 4) return;
+        var n = maskList(b, 0).length;
+        if (n > bn) { bn = n; best = b; }
+      });
+      if (!best) return null;
+      return maskList(best, 0).map(hex2);
     } catch (e) { return null; }
   }
   async function readFreeze() {
     var res = { dtc: null, pids: {}, status: '' };
     var r = await raw('020200', 6000);
-    var f = r.msgs.filter(function (x) { return x.indexOf('4202') === 0; })[0];
+    // Bir neçə ECU cavab verə bilər (biri "DTC yoxdur" = 0000): sıraya yox, DTC-si olan cavaba baxırıq.
+    var fc = r.msgs.filter(function (x) { return x.indexOf('4202') === 0; });
+    var f = fc.filter(function (x) { var q = bytesOf(x.slice(6)); return q.length >= 2 && (q[0] || q[1]); })[0] || fc[0];
+    res.t = new Date().toISOString();
     if (!f) { res.status = r.txt.join(' ') || 'cavab yoxdur'; return res; }
     var b = bytesOf(f.slice(6));
     if (b.length >= 2 && (b[0] || b[1])) res.dtc = dtcName(b[0], b[1]);
@@ -163,10 +187,17 @@
   async function readRpm() { var b = await readNum('0C'); return b && b.length >= 2 ? (b[0] * 256 + b[1]) / 4 : null; }
 
   async function readReadiness() {
-    var b = await readNum('01');
-    if (!b || b.length < 4) return null;
+    var cands = await readAll('01', 1);
+    cands = cands.filter(function (c) { return c.b.length >= 4; });
+    if (!cands.length) return null;
+    var info = cands.map(function (c) { return { hex: c.hex, mil: !!(c.b[0] & 128), count: c.b[0] & 127, mon: monCount(c.b) }; });
+    var sel = 0, tie = false;
+    cands.forEach(function (c, i) { if (info[i].mon > info[sel].mon) sel = i; });
+    cands.forEach(function (c, i) { if (i !== sel && info[i].mon === info[sel].mon && cands[i].hex !== cands[sel].hex) tie = true; });
+    var b = cands[sel].b;
     var A = b[0], B = b[1], C = b[2], D = b[3];
-    var res = { mil: !!(A & 128), count: A & 127, diesel: !!(B & 8), items: [] };
+    // MIL = PID 01-in A baytının 7-ci biti; DTC sayı = A bit0–6 (seçilmiş mühərrik ECU-su üçün)
+    var res = { mil: !!(A & 128), count: A & 127, diesel: !!(B & 8), items: [], t: new Date().toISOString(), source: 'PID01', ecus: cands.length, selected: sel, ambiguous: tie, candidates: info, raw: cands[sel].hex };
     function add(name, sup, inc) { res.items.push({ name: name, sup: !!sup, done: sup ? !inc : null }); }
     add('Misfire (yanma buraxma)', B & 1, B & 16);
     add('Fuel System (yanacaq sistemi)', B & 2, B & 32);
@@ -220,6 +251,10 @@
   OBD.readSpeed = readSpeed;
   OBD.readRpm = readRpm;
   OBD.readReadiness = readReadiness;
+  OBD.readAll = readAll;
   OBD.mode06List = mode06List;
-  OBD.mode06Read = mode06Read;
+  // obd.js (əvvəl yüklənir) düzgün 9-baytlıq (MID təkrarlanan) parseri OBD.mode06Read kimi qoyub. Köhnə 8-baytlıq
+  // variant yalnız yeni parser YOXDURsa ehtiyat kimi qalır; əks halda çoxqeydli cavablar səhv dekod olunurdu.
+  if (!OBD.parse06) OBD.mode06Read = mode06Read;
+  OBD.mode06Legacy = mode06Read;
 })();

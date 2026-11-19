@@ -207,7 +207,17 @@ window.DtcStatus = (function () {
     return KEYS.map(function (k) { return LAB[k] + ': ' + (!s.read[k] ? 'oxunmayıb' : (s.codes[k].length ? s.codes[k].join(', ') : 'yoxdur')); });
   }
   function labelsOf(code, d) { var s = summarize(d); return (s.byCode[code] || []).map(function (k) { return LAB[k]; }); }
-  return { KEYS: KEYS, LAB: LAB, summarize: summarize, lines: lines, labelsOf: labelsOf };
+  // Hər status üçün AYRI say (03 / 07 / 0A). Statuslar bir-birinə qarışdırılmır və toplanmır.
+  function counts(d) {
+    var s = summarize(d), o = {};
+    KEYS.forEach(function (k) { o[k] = s.read[k] ? s.codes[k].length : null; });
+    return o;
+  }
+  function countLine(d) {
+    var c = counts(d);
+    return KEYS.map(function (k) { return LAB[k] + ': ' + (c[k] === null ? 'oxunmayıb' : c[k] + ' kod'); }).join(' | ');
+  }
+  return { KEYS: KEYS, LAB: LAB, summarize: summarize, lines: lines, labelsOf: labelsOf, counts: counts, countLine: countLine };
 })();
 
 // ===== AutoLog: adapter qoşulan kimi avtomatik tam jurnal (yalnız OXUMA: Mode 01/02/03/06/07/09/0A) =====
@@ -295,7 +305,7 @@ window.AutoLog = (function () {
   }
 
   async function step(s, name, fn) {
-    try { s.snap[name] = await fn(); note(s, 'snap', name + ': oxundu'); }
+    try { var v = await fn(); if (v && typeof v === 'object' && !v.t) v.t = new Date().toISOString(); s.snap[name] = v; note(s, 'snap', name + ': oxundu'); }
     catch (e) { s.snap[name] = { error: String(e && e.message || e) }; note(s, 'snap', name + ': oxunmadı (' + (e && e.message || e) + ')'); }
   }
   async function readDtcAll(s) {
@@ -383,8 +393,17 @@ window.AutoLog = (function () {
   if (window.OBD && OBD.on) OBD.on(onObd);
 
   // ---------- Analiz: saniyə-saniyə rejim, fazalar, statistika, hadisələr ----------
-  function classify(rpm, spd, clt) {
+  var KMAP = { UNKNOWN: 'UNKNOWN', KEY_ON: 'KEYON', ENGINE_OFF: 'OFF', CRANKING: 'CRANK', WARMUP: 'WARMUP', IDLE: 'IDLE', DRIVING: 'DRIVE', RUNNING: 'RUNNOSPD' };
+  var RUNB = { IDLE: 1, DRIVE: 1, RUNNOSPD: 1, WARMUP: 1 };
+  // Rejim təyini EngineState modulundadır (təzə RPM tələb olunur; RPM=0 heç vaxt "işləyir" deyil; stale -> UNKNOWN).
+  // hadRun: bu sessiyada mühərrik işləyibsə RPM<100 "KEYON" yox, "OFF" (mühərrik dayandırılıb) olur.
+  function classify(rpm, spd, clt, hadRun) {
     var th = clt === null ? 'unk' : (clt < 50 ? 'cold' : (clt < 80 ? 'warm' : 'hot')), base;
+    if (window.EngineState) {
+      base = KMAP[EngineState.classify({ rpm: rpm, spd: spd, clt: clt }, !!hadRun)];
+      if (base === 'UNKNOWN' || base === 'KEYON' || base === 'OFF' || base === 'CRANK') th = 'unk';
+      return base + '/' + th;
+    }
     if (rpm === null) { base = 'UNKNOWN'; th = 'unk'; }
     else if (rpm < 100) { base = 'KEYON'; th = 'unk'; }
     else if (rpm <= 400) { base = 'CRANK'; th = 'unk'; }
@@ -394,14 +413,24 @@ window.AutoLog = (function () {
     return base + '/' + th;
   }
   var BASE = { KEYON: 'Açar ON, mühərrik söndürülü', CRANK: 'Start / çevirmə (100–400 rpm)', IDLE: 'Boş gediş (sürət 0)', DRIVE: 'Hərəkət (sürət > 0)', RUNNOSPD: 'Mühərrik işləyir, sürət məlum deyil', UNKNOWN: 'UNKNOWN: RPM oxunmur, rejim müəyyən edilə bilmir' };
+  BASE.OFF = 'Mühərrik dayandırılıb (ENGINE OFF)'; BASE.WARMUP = 'İsinmə: mühərrik işləyir, boş gediş, ECT < 80 °C';
   var TH = { cold: 'soyuq (<50 °C)', warm: 'isinir (50–79 °C)', hot: 'isti (≥80 °C)', unk: '' };
   function phaseName(key) { var a = key.split('/'); return BASE[a[0]] + (TH[a[1]] ? ', ' + TH[a[1]] : (a[1] === 'unk' && (a[0] === 'IDLE' || a[0] === 'DRIVE' || a[0] === 'RUNNOSPD') ? ', ECT məlum deyil' : '')); }
+
+  // Snapshot nə vaxt oxunub və hesabat anında nə qədər köhnədir (köhnə məlumat yeni kimi təqdim edilmir)
+  function ageTxt(iso, restored) {
+    if (!iso) return ' (oxunma vaxtı məlum deyil)';
+    var a = (Date.now() - Date.parse(iso)) / 1000;
+    if (!isFinite(a)) return '';
+    var t = a < 90 ? Math.round(a) + ' san' : (a < 5400 ? Math.round(a / 60) + ' dəq' : (a / 3600).toFixed(1) + ' saat');
+    return ' (' + t + ' əvvəl oxunub' + (restored ? ', ƏVVƏLKİ SESSİYADAN BƏRPA' : '') + (a > 600 ? ', KÖHNƏ: cari vəziyyət deyil' : '') + ')';
+  }
 
   function analyze(s) {
     var endT = (s.t1 || nowMs()) - s.t0, dur = Math.max(1000, endT), secs = Math.ceil(dur / 1000);
     var cols = ['0C', '0D', '05', '04', '06', '07', '34', '14', '15', '0B', '10', '0F', '42', 'RV'];
     var step = Math.max(5, Math.ceil(secs / 240 / 5) * 5);
-    var curV = {}, p = 0, rows = [], series = [], dts = {}, lastT = {};
+    var curV = {}, p = 0, rows = [], series = [], dts = {}, lastT = {}, hadRun = false;
     function fresh(id, tms) { var c = curV[id]; return c && tms - c.t <= STALE_MS ? c.v : null; }
     for (var sec = 0; sec <= secs; sec++) {
       var tms = sec * 1000;
@@ -411,7 +440,8 @@ window.AutoLog = (function () {
         lastT[id] = e[0]; p++;
       }
       var rpm = fresh('0C', tms), spd = fresh('0D', tms), clt = fresh('05', tms);
-      var key = classify(rpm, spd, clt);
+      var key = classify(rpm, spd, clt, hadRun);
+      if (RUNB[key.split('/')[0]]) hadRun = true;
       rows.push(key);
       if (sec % step === 0) series.push({ sec: sec, key: key, v: cols.map(function (c) { return fresh(c, tms); }) });
     }
@@ -442,16 +472,21 @@ window.AutoLog = (function () {
     return { dur: dur, secs: secs, step: step, rows: rows, phases: merged, series: series, cols: cols, dist: dist, dtMed: dtMed };
   }
 
+  var EVN = { IDLE: 'boş gediş', DRIVE: 'hərəkət', RUNNOSPD: 'sürət məlum deyil', WARMUP: 'isinmə' };
   function keyEvents(s, an) {
     var ev = [], seen = {}, i, t;
     function add(ms, txt) { ev.push({ ms: ms, s: txt }); }
-    var run = false, runSince = 0;
-    an.rows.forEach(function (k, sec) {
-      var base = k.split('/')[0], th = k.split('/')[1];
-      if (!seen.crank && base === 'CRANK') { seen.crank = 1; add(sec * 1000, 'Start / çevirmə aşkarlandı (RPM 100–400).'); }
-      if (!run && (base === 'IDLE' || base === 'DRIVE' || base === 'RUNNOSPD')) { run = true; runSince = sec; if (!seen.eng) { seen.eng = 1; add(sec * 1000, 'Mühərrik işləməyə başladı (RPM > 400).'); } }
-      if (run && base === 'KEYON' && sec - runSince > 30) { run = false; add(sec * 1000, 'RPM < 100: mühərrik dayandı (söndürüldü və ya sönüb).'); }
-      if (base === 'DRIVE' && !seen.move) { seen.move = 1; add(sec * 1000, 'İlk hərəkət (sürət > 0).'); }
+    // Fazalar (≥6 san davam edən, istisna: CRANK) üzrə: hər start və hər stop ayrıca yazılır; UNKNOWN keçid sayılmır.
+    var prevB = null, moved = false;
+    (an.phases || []).forEach(function (ph) {
+      var base = ph.key.split('/')[0], sec = ph.a;
+      if (base === 'UNKNOWN') return;
+      if (base === prevB) return;
+      if (base === 'CRANK') add(sec * 1000, 'START: çevirmə aşkarlandı (RPM 100–400).');
+      if (RUNB[base] && !RUNB[prevB]) add(sec * 1000, 'START: mühərrik işə düşdü (RPM > 400, ' + EVN[base] + ').');
+      if ((base === 'OFF' || base === 'KEYON') && RUNB[prevB]) add(sec * 1000, 'STOP: mühərrik dayandı (RPM < 100).');
+      if (base === 'DRIVE' && !moved) { moved = true; add(sec * 1000, 'İlk hərəkət (sürət > 0).'); }
+      prevB = base;
     });
     var cl = s.cnt['05']; if (cl) { var c50, c80; var cv = {}; s.ev.forEach(function (e) { if (s.ids[e[1]] === '05') { if (!c50 && e[2] >= 50) c50 = e; if (!c80 && e[2] >= 80) c80 = e; } }); if (c50) add(c50[0], 'ECT ilk dəfə 50 °C-ə çatdı (' + fmtv('05', c50[2]) + ').'); if (c80) add(c80[0], 'ECT ilk dəfə 80 °C-ə çatdı (' + fmtv('05', c80[2]) + ').'); }
     function ext(id, lab) { var c = s.cnt[id]; if (!c) return; var mn, mx; s.ev.forEach(function (e) { if (s.ids[e[1]] !== id) return; if (!mn || e[2] < mn[2]) mn = e; if (!mx || e[2] > mx[2]) mx = e; }); add(mx[0], lab + ' maksimum: ' + fmtv(id, mx[2]) + ' ' + punit(id)); if (mn[0] !== mx[0]) add(mn[0], lab + ' minimum: ' + fmtv(id, mn[2]) + ' ' + punit(id)); }
@@ -499,16 +534,28 @@ window.AutoLog = (function () {
       (window.DtcStatus ? DtcStatus.lines(d) : []).forEach(function (l) { L.push(l); });
       var all = window.DtcStatus ? DtcStatus.summarize(d).all : [];
       all.forEach(function (c) { var e = window.DTC_DB && DTC_DB[c]; L.push('  ' + c + ' [' + DtcStatus.labelsOf(c, d).join(' + ') + ']' + (e ? ': ' + (e.az || e.en || '') : '')); });
-      L.push('Oxunma vaxtı: ' + d.t);
+      if (window.DtcStatus) L.push('Say (statuslar ayrıca): ' + DtcStatus.countLine(d));
+      ['stored', 'pending', 'permanent'].forEach(function (k) {
+        var r = d[k]; if (!r || !r.ok) return;
+        if (r.consistent === false) L.push('  DİQQƏT ' + DtcStatus.LAB[k] + ': ECU-ların bildirdiyi say ' + (r.reported || []).join('+') + ', oxunan fərqli kod sayı ' + r.count + '.');
+      });
+      L.push('Oxunma vaxtı: ' + d.t + ageTxt(d.t, s.restored));
     }
     H('3. HAZIRLIQ TESTLƏRİ (Readiness)');
     var rd = sn.readiness;
     if (!rd || rd.error) L.push('Oxunmayıb' + (rd && rd.error ? ': ' + rd.error : '') + '.');
-    else { L.push('MIL: ' + (rd.mil ? 'YANIR' : 'yanmır') + ' | Kod sayı: ' + rd.count); rd.items.forEach(function (x) { L.push('  ' + x.name + ': ' + (!x.sup ? 'dəstəklənmir' : (x.done ? 'tamamlanıb' : 'tamamlanmayıb'))); }); }
+    else {
+      L.push('Mənbə: Mode 01 PID 01 (mühərrik ECU-su seçilib; ' + (rd.ecus || 1) + ' ECU cavab verdi)' + (rd.ambiguous ? ' | DİQQƏT: ECU-ları ayırmaq mümkün olmadı (bərabər monitor sayı), nəticə əmin deyil' : ''));
+      L.push('Oxunma vaxtı: ' + (rd.t || '—') + ageTxt(rd.t, s.restored));
+      L.push('MIL (PID 01, A baytı bit 7): ' + (rd.mil ? 'YANIR' : 'yanmır') + ' | PID 01 kod sayı (A bit 0–6): ' + rd.count);
+      (rd.candidates || []).forEach(function (c, i) { L.push('  ECU namizədi ' + (i + 1) + (i === rd.selected ? ' (seçilib)' : '') + ': ' + c.hex + ' | MIL ' + (c.mil ? 'ON' : 'off') + ' | say ' + c.count + ' | dəstəklənən monitor ' + c.mon); });
+      if (window.DtcStatus && d && !d.error) { var cc = DtcStatus.counts(d); if (cc.stored !== null && cc.stored !== rd.count) L.push('  Qeyd: PID 01 sayı (' + rd.count + ') ilə Mode 03 sayı (' + cc.stored + ') fərqlidir. Bunlar fərqli vaxtlarda/ECU-lardan oxunub, bir-birinə qarışdırılmır.'); }
+      rd.items.forEach(function (x) { L.push('  ' + x.name + ': ' + (!x.sup ? 'dəstəklənmir' : (x.done ? 'tamamlanıb' : 'tamamlanmayıb'))); });
+    }
     H('4. FREEZE FRAME');
     var fz = sn.freeze;
     if (!fz || fz.error) L.push('Oxunmayıb.'); else if (!fz.dtc) L.push(fz.status || 'Freeze Frame saxlanmayıb.');
-    else { L.push('Kod: ' + fz.dtc); Object.keys(fz.pids).forEach(function (k) { L.push('  ' + k + ' ' + pname(k) + ': ' + fmtv(k, fz.pids[k].v) + ' ' + punit(k)); }); }
+    else { L.push('Kod: ' + fz.dtc + ' | Oxunma vaxtı: ' + (fz.t || '—') + ageTxt(fz.t, s.restored) + ' | Bu, kodun yarandığı ANIN saxlanmış göstəricisidir, cari vəziyyət deyil'); Object.keys(fz.pids).forEach(function (k) { L.push('  ' + k + ' ' + pname(k) + ': ' + fmtv(k, fz.pids[k].v) + ' ' + punit(k)); }); }
 
     H('5. FAZALAR (zaman ardıcıllığı)');
     if (!an.phases.length) L.push('Məlumat yoxdur.');
@@ -549,6 +596,7 @@ window.AutoLog = (function () {
         var nm = r.midName ? ' (' + r.midName + ')' : '';
         L.push('MID ' + ('0' + r.mid.toString(16)).slice(-2).toUpperCase() + nm + ':' + (r.error ? ' xəta ' + r.error : ''));
         (r.tests || []).forEach(function (t) { L.push('  TID ' + ('0' + t.tid.toString(16)).slice(-2).toUpperCase() + ' UASID ' + ('0' + (t.uasid !== undefined ? t.uasid : t.unit).toString(16)).slice(-2).toUpperCase() + ' | dəyər ' + t.v + ' | limit ' + t.mn + '…' + t.mx + ' | ' + (t.limit === 'IN' ? 'ECU limitləri daxilində' : t.limit === 'OUT' ? 'ECU limitlərindən kənarda' : 'müqayisə edilmir') + ' | ' + (t.status || 'UNKNOWN') + (t.mapped ? '' : ' (TID xəritələnməyib)') + (t.flags && t.flags.length ? ' | ' + t.flags.join(', ') : '') + ' | xam: ' + (t.rawHex || '—')); });
+        (r.raw || []).forEach(function (h) { L.push('  RAW: ' + h); });
         (r.notes || []).forEach(function (n) { L.push('  qeyd: ' + n); });
       });
     }

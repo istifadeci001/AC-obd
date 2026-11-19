@@ -26,8 +26,8 @@ window.PIDS = (function () {
   add('0F', 'Giriş havası temperaturu', 'Intake Air Temperature', '°C', 0, function (b) { return { v: b[0] - 40 }; });
   add('10', 'Hava sərfi (MAF)', 'Mass Air Flow', 'g/s', 2, function (b) { return { v: w(b) / 100 }; });
   add('11', 'Drossel mövqeyi', 'Throttle Position', '%', 1, function (b) { return { v: b[0] * 100 / 255 }; });
-  add('14', 'O2 sensor 1-ci sıra, sensor 1', 'O2 Sensor B1S1 Voltage', 'V', 3, function (b) { return { v: b[0] / 200 }; });
-  add('15', 'O2 sensor 1-ci sıra, sensor 2', 'O2 Sensor B1S2 Voltage', 'V', 3, function (b) { return { v: b[0] / 200 }; });
+  add('14', 'O2 sensor 1-ci sıra, sensor 1', 'O2 Sensor B1S1 Voltage', 'V', 3, function (b) { var o = { v: b[0] / 200 }; if (b.length > 1 && b[1] !== 0xFF) o.aux = { trim: b[1] * 100 / 128 - 100, trimUnit: '%' }; return o; }); // B=0xFF: bu sensor üçün trim istifadə olunmur
+  add('15', 'O2 sensor 1-ci sıra, sensor 2', 'O2 Sensor B1S2 Voltage', 'V', 3, function (b) { var o = { v: b[0] / 200 }; if (b.length > 1 && b[1] !== 0xFF) o.aux = { trim: b[1] * 100 / 128 - 100, trimUnit: '%' }; return o; }); // B=0xFF: bu sensor üçün trim istifadə olunmur
   add('1F', 'Mühərrikin işləmə vaxtı', 'Run Time Since Start', 's', 0, function (b) { return { v: w(b) }; });
   add('24', 'Lambda B1S1 (geniş diapazon)', 'Lambda B1S1 (wide range)', 'λ', 3, function (b) { return { v: w(b) * 2 / 65536 }; });
   add('25', 'Lambda B1S2 (geniş diapazon)', 'Lambda B1S2 (wide range)', 'λ', 3, function (b) { return { v: w(b) * 2 / 65536 }; });
