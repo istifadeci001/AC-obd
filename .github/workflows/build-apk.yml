@@ -23,11 +23,17 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Testləri işlət
-        run: node tests/run.js
+      - name: OBDex məlumatını yoxla (sxem, təkrar, əlaqələr)
+        run: node tools/validate-data.js
 
       - name: Testləri işlət
         run: node tests/run.js
+
+      - name: OBDex inteqrasiya testləri
+        run: node tests/obdex-tests.js
+
+      - name: Düzəliş testləri (Mode 06, DTC/MIL, engine state, adapter növbəsi)
+        run: node tests/fix-tests.js
 
       - name: Bir fayllı paket (göndərmək üçün)
         run: node tools/bundle.js
@@ -49,11 +55,10 @@ jobs:
           npm run build:ble
           test -f www/js/ble.js
 
-      - name: DTC bazasını yüklə (obdex, CC0)
-        continue-on-error: true
+      - name: DTC və PID bazasını qur (oflayn, data/obdex)
         run: |
-          echo 'window.DTC_BIG={};window.DTC_BIG_N=0;' > www/js/dtc-data.js
           node tools/build-dtc.js
+          node tools/build-pids.js
 
       - name: DTC bazasını yoxla
         run: |
