@@ -75,7 +75,7 @@ function wire(ctx, script) { // sahte adapter
   eq('II5 sürüş fazası: maks sürət 80', dr['0D'].max, 80);
   check('II6 təxmini yol > 3 km', an.dist > 3 && an.dist < 20, an.dist);
   const ev = AL.events(s, an).map(e => e.s).join('\n');
-  check('II7 hadisələr: start, ECT 50 və 80, ilk hərəkət', /Start \/ çevirmə/.test(ev) && /50 °C-ə çatdı/.test(ev) && /80 °C-ə çatdı/.test(ev) && /İlk hərəkət/.test(ev), ev.slice(0, 400));
+  check('II7 hadisələr: start, ECT 50 və 80, ilk hərəkət', /START: çevirmə/.test(ev) && /50 °C-ə çatdı/.test(ev) && /80 °C-ə çatdı/.test(ev) && /İlk hərəkət/.test(ev), ev.slice(0, 400));
   eq('II8 zaman sırası ≈ 240 sətir (hər 5 s)', [an.step, an.series.length], [5, 241]);
   // mətn
   s.snap.dtc = { t: 'x', stored: { ok: true, codes: [] }, pending: { ok: true, codes: ['P0420'] }, permanent: { ok: true, codes: ['P0420'] } };
