@@ -8,7 +8,11 @@ window.Session = (function () {
     var row = [Math.round((Date.now() - rec.t0) / 1000)];
     rec.cols.forEach(function (id) {
       var r = OBD.values[id];
-      row.push(r && r.v !== null && !r.nodata ? Number(r.v.toFixed(3)) : '');
+      // Sessiya cədvəlinə yalnız təzə oxunuş yazılır. Köhnə dəyəri yeni nümunə kimi
+      // təkrarlamaq faza təyini və zaman sırasını saxtalaşdıra bilər.
+      var fresh = r && r.v !== null && !r.nodata && r.t &&
+        (Date.now() - r.t) >= 0 && (Date.now() - r.t) <= 8000;
+      row.push(fresh ? Number(r.v.toFixed(3)) : '');
     });
     rec.rows.push(row);
     if (rec.rows.length >= 1500) stop();
