@@ -250,7 +250,7 @@ window.AutoLog = (function () {
   function med(a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
 
   function create(t) {
-    return { v: 1, t0: t, t1: null, on: true, ids: [], idx: {}, ev: [], notes: [], snap: {}, last: {}, cnt: {}, bad: {}, supported: [], dropped: 0, mine: null, yielded: false, idleSince: 0, prob: false, restored: false, lastDtc: t, rot: null, busy: false };
+    return { v: 2, t0: t, t1: null, on: true, ids: [], idx: {}, ev: [], notes: [], snap: {}, last: {}, cnt: {}, bad: {}, attempts: {}, supported: [], dropped: 0, mine: null, yielded: false, idleSince: 0, prob: false, restored: false, lastDtc: t, rot: null, busy: false };
   }
   function note(s, k, text) { s.notes.push({ t: nowMs(), k: k, s: text }); emit(); }
   function emit() { subs.forEach(function (f) { try { f(); } catch (e) {} }); }
@@ -274,6 +274,7 @@ window.AutoLog = (function () {
     Object.keys(vals).forEach(function (id) {
       var r = vals[id];
       if (!r) return;
+      if (r.attempts && r.attempts !== s.attempts[id]) { s.attempts[id] = r.attempts; }
       if (r.invalid && r.bad !== s.bad[id]) { s.bad[id] = r.bad; note(s, 'invalid', 'PID ' + id + ' natamam/etibarsız cavab: ' + r.invalid); }
       if (!r.t || r.v === null || r.nodata || r.t === s.last[id]) return;
       s.last[id] = r.t; feed(s, id, r.v, r.t);
@@ -319,6 +320,29 @@ window.AutoLog = (function () {
     if (window.Session && Session.ctx && !Session.ctx.dtc) Session.ctx.dtc = d;
     return d;
   }
+  function hex2(n) { return ('0' + n.toString(16)).slice(-2).toUpperCase(); }
+  async function readMode09Inventory() {
+    var bases = [], ids = [], blocks = [], reads = [];
+    for (var base = 0; base <= 0xE0; base += 0x20) {
+      var raw = await OBD.raw('09' + hex2(base), 4000);
+      var msg = (raw.msgs || []).filter(function (x) { return x.indexOf('49' + hex2(base)) === 0; })[0];
+      if (!msg) { blocks.push({ pid: hex2(base), ok: false, raw: (raw.msgs || []).join(' | ') || (raw.txt || []).join(' ') }); break; }
+      var h = msg.slice(4), b = [];
+      for (var i = 0; i + 1 < h.length; i += 2) { var n = parseInt(h.slice(i, i + 2), 16); if (!isFinite(n)) break; b.push(n); }
+      if (b.length < 4) { blocks.push({ pid: hex2(base), ok: false, raw: msg, error: 'Dəstək maskası natamamdır' }); break; }
+      var page = [];
+      for (var bit = 0; bit < 32; bit++) if (b[Math.floor(bit / 8)] & (1 << (7 - bit % 8))) { var id = base + bit + 1; ids.push(hex2(id)); page.push(hex2(id)); }
+      bases.push(base); blocks.push({ pid: hex2(base), ok: true, supported: page, raw: msg });
+      if (page.indexOf(hex2(base + 32)) < 0) break;
+    }
+    for (var j = 0; j < ids.length; j++) {
+      var pid = ids[j];
+      try { var rr = await OBD.raw('09' + pid, 5000); reads.push({ pid: pid, ok: !!(rr.msgs && rr.msgs.some(function (x) { return x.indexOf('49' + pid) === 0; })), msgs: rr.msgs || [], text: rr.txt || [] }); }
+      catch (e) { reads.push({ pid: pid, ok: false, error: e.message }); }
+    }
+    return { bases: bases.map(hex2), supported: ids, blocks: blocks, reads: reads };
+  }
+
   async function snapshot(s) {
     if (s.busy) return; s.busy = true;
     var S = OBD.S;
@@ -326,17 +350,18 @@ window.AutoLog = (function () {
     s.supported = S.supported.slice();
     await step(s, 'dtc', function () { return readDtcAll(s); });
     await step(s, 'vehicle', function () { return OBD.readVehicleInfo(); });
+    await step(s, 'mode09', readMode09Inventory);
     await step(s, 'readiness', function () { return OBD.readReadiness(); });
     await step(s, 'freeze', function () { return OBD.readFreeze(); });
     await step(s, 'mode06', async function () {
       var mids = await OBD.mode06List(), out = [];
-      for (var i = 0; i < mids.length && i < 32; i++) { try { out.push(await OBD.mode06Read(mids[i])); } catch (e) { out.push({ mid: mids[i], error: e.message, tests: [] }); } }
+      for (var i = 0; i < mids.length; i++) { try { out.push(await OBD.mode06Read(mids[i])); } catch (e) { out.push({ mid: mids[i], error: e.message, tests: [] }); } }
       return { list: mids, reads: out };
     });
     await step(s, 'rawPids', async function () {
       var out = {};
       var ids = S.supported.filter(function (x) { return !P(x) && parseInt(x, 16) % 32 !== 0; });
-      for (var i = 0; i < ids.length && i < 24; i++) { try { var r = await OBD.raw('01' + ids[i], 3000); out[ids[i]] = r.msgs.join(' | ') || r.txt.join(' '); } catch (e) { out[ids[i]] = 'ERR ' + e.message; } }
+      for (var i = 0; i < ids.length; i++) { try { var r = await OBD.raw('01' + ids[i], 3000); out[ids[i]] = r.msgs.join(' | ') || r.txt.join(' '); } catch (e) { out[ids[i]] = 'ERR ' + e.message; } }
       return out;
     });
     s.busy = false; save();
@@ -345,7 +370,7 @@ window.AutoLog = (function () {
   function save() {
     var s = cur; if (!s || !window.Store) return;
     try {
-      var o = { v: 1, t0: s.t0, t1: s.t1, ids: s.ids, ev: s.ev.slice(-30000), notes: s.notes.slice(-300), snap: s.snap, supported: s.supported, cnt: s.cnt, dropped: s.dropped, bad: s.bad };
+      var o = { v: 2, t0: s.t0, t1: s.t1, ids: s.ids, ev: s.ev.slice(-30000), notes: s.notes.slice(-300), snap: s.snap, supported: s.supported, cnt: s.cnt, dropped: s.dropped, bad: s.bad, attempts: s.attempts };
       var j = JSON.stringify(o); if (j.length < 900000) Store.set(KEY, o);
     } catch (e) {}
   }
@@ -354,7 +379,7 @@ window.AutoLog = (function () {
     var o = Store.get(KEY, null);
     if (!o || !o.ev || !o.ev.length) return null;
     var s = create(o.t0); s.t1 = o.t1 || (o.t0 + (o.ev[o.ev.length - 1][0] || 0)); s.on = false; s.restored = true;
-    s.ids = o.ids; s.ids.forEach(function (id, i) { s.idx[id] = i; }); s.ev = o.ev; s.notes = o.notes || []; s.snap = o.snap || {}; s.supported = o.supported || []; s.cnt = o.cnt || {}; s.dropped = o.dropped || 0; s.bad = o.bad || {};
+    s.ids = o.ids; s.ids.forEach(function (id, i) { s.idx[id] = i; }); s.ev = o.ev; s.notes = o.notes || []; s.snap = o.snap || {}; s.supported = o.supported || []; s.cnt = o.cnt || {}; s.dropped = o.dropped || 0; s.bad = o.bad || {}; s.attempts = o.attempts || {};
     cur = s; return s;
   }
 
@@ -370,7 +395,27 @@ window.AutoLog = (function () {
     snapshot(cur);
     return cur;
   }
-  function stop() { if (cur && cur.on) { cur.on = false; cur.manual = true; cur.t1 = nowMs(); note(cur, 'sys', 'Jurnal istifadəçi tərəfindən dayandırıldı.'); save(); } }
+  function stop() {
+    if (cur && cur.on) {
+      sample(); cur.on = false; cur.manual = true; cur.t1 = nowMs();
+      note(cur, 'sys', 'Jurnal istifadəçi tərəfindən dayandırıldı.'); save();
+    }
+    return cur;
+  }
+  function exportStopped() {
+    if (!cur) return Promise.reject(new Error('Jurnal yoxdur'));
+    if (cur.on) stop();
+    var d = new Date(cur.t1 || nowMs()), p = function (n) { return ('0' + n).slice(-2); };
+    var name = 'ACOBD-jurnal-' + d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.txt';
+    var text = build(cur, 'full', { raw: true });
+    if (window.ACOBDFiles && typeof ACOBDFiles.saveText === 'function') {
+      return ACOBDFiles.saveText(name, text).then(function (r) {
+        note(cur, 'export', 'Tam TXT faylı ACOBD qovluğunda saxlanıldı: ' + name);
+        save(); return { ok: true, name: name, uri: r && r.uri ? r.uri : '', text: text, location: 'ACOBD qovluğu' };
+      });
+    }
+    return Promise.resolve({ ok: false, name: name, text: text, reason: 'Filesystem plugin mövcud deyil; brauzer yükləməsinə keçin.' });
+  }
   function takeOver() { ext = null; if (cur && cur.on) { cur.yielded = false; cur.mine = null; cur.idleSince = 0; note(cur, 'sys', 'Avto-jurnal sorğu siyahısını yenidən öz üzərinə götürdü.'); } }
   function resume() { if (cur && !cur.on && window.OBD && OBD.S.state === 'ecu') { cur.on = true; cur.manual = false; cur.t1 = null; note(cur, 'sys', 'Jurnal davam etdirildi.'); } }
   function clear() { cur = null; if (window.Store) try { Store.set(KEY, null); } catch (e) {} emit(); }
@@ -503,7 +548,7 @@ window.AutoLog = (function () {
   function pidStatus(s, id, tRef) {
     if (id !== 'RV' && s.supported.length && s.supported.indexOf(id) < 0) return { st: 'UNSUPPORTED', why: 'ECU dəstəkləmir (nasazlıq deyil)' };
     var c = s.cnt[id];
-    if (!c) { if (s.bad[id]) return { st: 'INVALID', why: 'natamam/etibarsız cavab gəldi' }; return { st: 'UNKNOWN', why: P(id) || id === 'RV' ? 'jurnal dövründə etibarlı dəyər oxunmadı' : 'dekoder yoxdur (xam HEX bölməsinə baxın)' }; }
+    if (!c) { if (s.bad[id]) return { st: 'INVALID', why: 'natamam/etibarsız cavab gəldi' }; if (s.attempts && s.attempts[id] > 0) return { st: 'UNKNOWN', why: 'TEST EDİLİB: sorğu göndərilib, etibarlı cavab alınmayıb' }; return { st: 'UNKNOWN', why: P(id) || id === 'RV' ? 'TEST EDİLMƏYİB: jurnal dövründə etibarlı oxunuş olmayıb' : 'dekoder yoxdur (xam HEX bölməsinə baxın)' }; }
     if (tRef - c.tl > STALE_MS) return { st: 'STALE', why: 'son dəyər ' + Math.round((tRef - c.tl) / 1000) + ' s əvvəl oxunub' };
     return { st: 'REAL', why: '' };
   }
@@ -530,6 +575,9 @@ window.AutoLog = (function () {
     if (ad.info) L.push('ATI: ' + (ad.info.ati || '—') + ' | STI: ' + (ad.info.sti || '—') + ' | AT@1: ' + (ad.info.at1 || '—'));
     if (ad.o2map) L.push('O2 sensor xəritəsi (PID ' + (ad.o2map.scheme || '—') + ', maska ' + ad.o2map.mask + ')');
     L.push('VIN (ECU-dan): ' + (vi.vin || (vi.error ? 'oxunmadı (' + vi.error + ')' : '—')) + ' | Kalibrasiya ID: ' + (vi.cal || '—'));
+    var m9 = sn.mode09; H('1A. MODE 09 (avtomobil məlumatları)');
+    if (!m9 || m9.error) L.push('Mode 09 siyahısı oxunmayıb' + (m9 && m9.error ? ': ' + m9.error : '') + '.');
+    else { L.push('Dəstək maskaları: ' + (m9.bases || []).join(' ') + ' | dəstəklənən PID-lər: ' + ((m9.supported || []).join(' ') || 'müəyyən edilmədi')); (m9.reads || []).forEach(function (x) { L.push('  PID ' + x.pid + ': ' + (x.ok ? 'cavab alındı' : 'cavab yoxdur') + (x.error ? ' (' + x.error + ')' : '') + ' | ' + ((x.msgs || []).join(' / ') || (x.text || []).join(' '))); }); }
 
     H('2. XƏTA KODLARI (statuslar ayrı)');
     var d = sn.dtc;
@@ -589,6 +637,7 @@ window.AutoLog = (function () {
     });
     var rp = sn.rawPids; if (rp && !rp.error && Object.keys(rp).length) { L.push(''); L.push('Dekoderi olmayan, ECU-nun dəstəklədiyi PID-lərin xam cavabı:'); Object.keys(rp).forEach(function (k) { L.push('  ' + k + ': ' + rp[k]); }); }
     L.push('ECU-nun dəstəklədiyi PID-lər (' + s.supported.length + '): ' + (s.supported.join(' ') || '—'));
+    L.push('QEYD: Dəstəklənən, lakin nümunəsi olmayan PID-lər UNKNOWN kimi saxlanır; dəstəklənməyən PID-lər UNSUPPORTED-dur. Dekoderi olmayan dəstəklənən PID-lərin xam cavabları ayrıca toplanır.');
     if (s.supported.length) { var uns = Object.keys(window.PIDS || {}).filter(function (x) { return /^[0-9A-F]{2}$/.test(x) && s.supported.indexOf(x) < 0 && parseInt(x, 16) % 32 !== 0; }).sort(); L.push('ECU dəstəkləmir, UNSUPPORTED (nasazlıq deyil; ' + uns.length + '): ' + (uns.join(' ') || '—')); }
 
     H('9. MODE 06 (xam, PASS/FAIL elan edilmir)');
@@ -611,12 +660,13 @@ window.AutoLog = (function () {
     if (opts.raw) {
       H('12. XAM NÜMUNƏLƏR (CSV: saniyə, PID, dəyər)');
       s.ev.forEach(function (e) { L.push((e[0] / 1000).toFixed(2) + ',' + s.ids[e[1]] + ',' + e[2]); });
+      if (window.RawLog && RawLog.text) { H('13. XAM ELM SORĞU/CAVABLARI (son 3000 əməliyyat)'); L.push(RawLog.text() || 'Xam adapter əməliyyatı yoxdur.'); }
     } else if (full) L.push('\n(Xam nümunələr bu mətndə yoxdur: "TXT yüklə" faylına əlavə olunur.)');
     return L.join('\n');
   }
 
   return {
-    start: start, stop: stop, resume: resume, takeOver: takeOver,
+    start: start, stop: stop, exportStopped: exportStopped, resume: resume, takeOver: takeOver,
     setAuto: function (v) { autoOn = !!v; try { if (window.Store) Store.set('autolog_auto', autoOn); } catch (e) {} }, auto: function () { return autoOn; }, clear: clear, restore: restore, sample: sample, snapshot: function () { if (cur) snapshot(cur); },
     session: function () { return cur; }, analyze: analyze, events: keyEvents, build: build, status: pidStatus, classify: classify,
     on: function (f) { subs.push(f); }, create: create, feed: feed, setCurrent: function (s) { cur = s; }

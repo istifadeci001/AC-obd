@@ -352,7 +352,7 @@
   function head(s, kind) {
     var h = '<div class="card"><h2>' + esc(kind === 'diag' ? 'Canlı diaqnostika (avto-jurnal)' : 'Canlı göstərici (tam avto-jurnal)') + '</h2>' +
       '<p class="sm">Adapter qoşulan kimi avtomatik başlayır: bütün PID-lər, kodlar, hazırlıq, freeze frame, Mode 06 və adapter məlumatı yazılır. Hesabatı kopyalayıb Claude, Gemini və ya ChatGPT-yə yapışdırın.</p>' +
-      btn('📋 Kopyala', 'copy') + btn('⬇️ TXT yüklə', 'dl', 'alt') + btn('👁 Önbaxış', 'prev', 'alt') +
+      btn('📋 Hamısını kopyala', 'copy') + btn('⬇️ TXT yüklə', 'dl', 'alt') + btn('👁 Önbaxış', 'prev', 'alt') +
       (s && s.on ? btn('■ Dayandır', 'stop', 'alt') : (s ? btn('▶ Davam et', 'resume', 'alt') : '')) + btn('↻ Yenidən başlat', 'restart', 'alt') + btn('🎯 Sorğunu avto-jurnala qaytar', 'take', 'alt') +
       btn('Avto-başlat: ' + (AutoLog.auto() ? 'AÇIQ' : 'BAĞLI'), 'auto', 'alt') +
       '<p class="sm" id="al-msg">' + esc(msg) + '</p></div>' + (prev ? '<div class="card"><pre id="al-pre" style="white-space:pre-wrap;font-size:11px;max-height:60vh;overflow:auto"></pre></div>' : '');
@@ -369,7 +369,7 @@
       h += '<div class="card"><h2>Bütün PID-lər (a-dan z-yə)</h2>';
       ids.filter(function (i) { return parseInt(i, 16) % 32 !== 0 || isNaN(parseInt(i, 16)); }).sort().forEach(function (id) {
         var st = AutoLog.status(s, id, s.on ? now : end), c = s.cnt[id];
-        h += '<div class="row"><span class="k">' + esc(id + ' ' + PN(id)) + '</span><span class="' + SC[st.st] + '">' + (c ? esc(FV(id, c.last) + ' ' + PU(id) + ' ') : '') + '[' + st.st + ']' + (c ? ' <span class="sm">n=' + c.n + '</span>' : '') + '</span></div>';
+        h += '<div class="row"><span class="k">' + esc(id + ' ' + PN(id)) + '</span><span class="' + SC[st.st] + '">' + (c ? esc(FV(id, c.last) + ' ' + PU(id) + ' ') : '') + '[' + st.st + ']' + (st.why ? ' <span class="sm">' + esc(st.why) + '</span>' : '') + (c ? ' <span class="sm">n=' + c.n + '</span>' : '') + '</span></div>';
       });
       h += '</div>';
     } else {
@@ -411,11 +411,18 @@
     if (a === 'copy' || a === 'dl') {
       if (!s) { say('Jurnal yoxdur.'); return; }
       try {
-        if (a === 'copy') copyTxt(AutoLog.build(s, kind, { raw: false }), function (ok) { say(ok ? 'Kopyalandı. İndi Claude, Gemini və ya ChatGPT-yə yapışdırın. (Xam nümunələr TXT faylındadır.)' : 'Kopyalanmadı: Önbaxışdan əl ilə seçin.'); });
+        if (a === 'copy') copyTxt(AutoLog.build(s, 'full', { raw: true }), function (ok) { say(ok ? 'Bütün jurnal, xam nümunələr daxil olmaqla kopyalandı. ChatGPT-yə yapışdıra bilərsiniz.' : 'Kopyalanmadı: TXT yüklə düyməsindən istifadə edin.'); });
         else { dlTxt(AutoLog.build(s, kind, { raw: true }), kind); say('Yükləmə başladı (xam nümunələrlə birlikdə). İşləməsə "Kopyala" istifadə edin.'); }
       } catch (x) { say('Alınmadı: ' + x.message); }
     } else if (a === 'prev') { prev = !prev; rerender(); }
-    else if (a === 'stop') { AutoLog.stop(); say('Jurnal dayandırıldı.'); rerender(); }
+    else if (a === 'stop') {
+      AutoLog.stop(); say('Jurnal dayandırıldı. TXT ACOBD qovluğunda saxlanılır…'); rerender();
+      AutoLog.exportStopped().then(function (r) {
+        if (r.ok) say('Tam jurnal saxlanıldı: ' + r.location + '/' + r.name);
+        else { dlTxt(r.text, 'full'); say('Tam jurnal ACOBD qovluğuna yazıla bilmədi; TXT yükləməsi başladıldı.'); }
+        rerender();
+      }).catch(function (x) { try { var ss = AutoLog.session(); if (ss) dlTxt(AutoLog.build(ss, 'full', { raw: true }), 'full'); say('ACOBD qovluğuna yazılmadı (' + x.message + '); TXT yükləməsi başladıldı.'); } catch (y) { say('TXT saxlanmadı: ' + x.message); } rerender(); });
+    }
     else if (a === 'resume') { AutoLog.resume(); say('Jurnal davam edir.'); rerender(); }
     else if (a === 'restart') { AutoLog.clear(); if (OBD.S.state === 'ecu') AutoLog.start(true); say('Yeni jurnal başladı.'); rerender(); }
     else if (a === 'take') { AutoLog.takeOver(); say('Avto-jurnal sorğu siyahısını geri aldı.'); }

@@ -155,7 +155,7 @@
   }
 
   async function mode09(pid) {
-    var r = await raw('09' + pid, 10000), pre = '49' + pid, b = [];
+    var r = await raw('09' + pid, 5000), pre = '49' + pid, b = [];
     r.msgs.forEach(function (s) {
       if (s.indexOf(pre) !== 0) return; // başqa cavab sətirləri VIN-ə qarışmasın
       b = b.concat(bytesOf(s.slice(6)));

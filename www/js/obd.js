@@ -204,7 +204,8 @@ window.OBD = (function () {
 
   async function readOne(id) {
     var p = window.PIDS[id];
-    var rec = S.values[id] || (S.values[id] = { v: null, min: null, max: null, hist: [], nodata: false, n: 0, bad: 0, nd: 0, invalid: '', ts: [], aux: null });
+    var rec = S.values[id] || (S.values[id] = { v: null, min: null, max: null, hist: [], nodata: false, n: 0, bad: 0, nd: 0, invalid: '', ts: [], aux: null, attempts: 0, lastAttempt: 0 });
+    rec.attempts = (rec.attempts || 0) + 1; rec.lastAttempt = Date.now();
     if (id === 'RV') {
       var l = await ELM.send('ATRV', 2000);
       var m = /([\d.]+)\s*V/i.exec(l.join(' '));
