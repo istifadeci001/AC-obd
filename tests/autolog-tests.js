@@ -51,7 +51,7 @@ function wire(ctx, script) { // sahte adapter
 
   // ===== II. 20 dəqiqəlik jurnal (SİNTETİK ssenari) =====
   console.log('\n[II] 20 dəq ssenari: açar ON → start → soyuq boş gediş → isinmə → sürüş (sintetik)');
-  const T0 = 1700000000000, s = AL.create(T0); s.supported = SUP.slice();
+  const T0 = 1700000000000, s = AL.create(T0); s.attempts = s.attempts || {}; s.bad = s.bad || {}; s.supported = SUP.slice();
   const put = (sec, id, v) => AL.feed(s, id, v, T0 + sec * 1000);
   for (let t = 0; t <= 1200; t++) {
     let rpm, spd, ect;
