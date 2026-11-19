@@ -3,7 +3,7 @@
   "version": "1.5.0",
   "private": true,
   "scripts": {
-    "test": "node tools/validate-data.js && node tests/run.js && node tests/obdex-tests.js",
+    "test": "node tools/validate-data.js && node tests/run.js && node tests/obdex-tests.js && node tests/fix-tests.js",
     "build:data": "node tools/build-dtc.js && node tools/build-pids.js",
     "validate:data": "node tools/validate-data.js",
     "build:ble": "esbuild src/ble-entry.js --bundle --format=iife --outfile=www/js/ble.js"
