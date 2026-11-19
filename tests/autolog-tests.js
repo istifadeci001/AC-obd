@@ -93,6 +93,8 @@ function wire(ctx, script) { // sahte adapter
   // PID statusları
   eq('II16 dəstəklənməyən PID -> UNSUPPORTED', AL.status(s, '5C', s.t1).st, 'UNSUPPORTED');
   eq('II17 dəstəklənir, heç oxunmayıb -> UNKNOWN', AL.status(s, '0F', s.t1).st, 'UNKNOWN');
+  check('II17a heç sorğulanmayan PID açıq TEST EDİLMƏYİB kimi izah olunur', /TEST EDİLMƏYİB/.test(AL.status(s, '0F', s.t1).why), AL.status(s, '0F', s.t1).why);
+  s.attempts['0F'] = 2; check('II17b sorğu göndərilib cavab gəlməyən PID fərqləndirilir', /TEST EDİLİB/.test(AL.status(s, '0F', s.t1).why), AL.status(s, '0F', s.t1).why);
   eq('II18 təzə oxunmuş -> REAL', AL.status(s, '0C', s.t1).st, 'REAL');
   eq('II19 sonuncu oxuma çoxdan -> STALE (PID 15 son oxuma 700 s)', AL.status(s, '15', s.t1).st, 'STALE');
   // RPM boşluğu -> UNKNOWN fazası
@@ -115,7 +117,7 @@ function wire(ctx, script) { // sahte adapter
   await sleep(4500);
   check('III1 avtomatik start: jurnal aktivdir və PID-lər oxunur', sx && sx.on && sx.cnt['0C'] && sx.cnt['0C'].n >= 2 && sx.cnt['05'], JSON.stringify(Object.keys(sx.cnt)));
   check('III2 snapshot: kodlar oxunub, 3 status ayrı', sx.snap.dtc && sx.snap.dtc.stored.codes[0] === 'P0420' && sx.snap.dtc.pending.codes[0] === 'P0420' && sx.snap.dtc.permanent.codes[0] === 'P0420', JSON.stringify(sx.snap.dtc && sx.snap.dtc.stored));
-  check('III3 snapshot addımları jurnala yazılıb (a-dan z-yə)', ['dtc', 'vehicle', 'readiness', 'freeze', 'mode06'].every(n => sx.notes.some(x => x.k === 'snap' && x.s.indexOf(n) === 0)), sx.notes.map(x => x.s).join('; ').slice(0, 300));
+  check('III3 snapshot addımları jurnala yazılıb (a-dan z-yə)', ['dtc', 'vehicle', 'mode09', 'readiness', 'freeze', 'mode06'].every(n => sx.notes.some(x => x.k === 'snap' && x.s.indexOf(n) === 0)), sx.notes.map(x => x.s).join('; ').slice(0, 300));
   check('III4 ECU cavab verməyən (NO DATA) addımlar xəta yox, "oxundu/boş" kimi qeyd olunur', !sx.notes.some(x => /TypeError|undefined/.test(x.s)), '');
   const txt3 = k.AutoLog.build(sx, 'full', { raw: false });
   check('III5 hesabat qurulur və P0420 var', /P0420/.test(txt3) && /KONNWEI/.test(txt3), '');
@@ -127,6 +129,10 @@ function wire(ctx, script) { // sahte adapter
   // dayandırma
   k.AutoLog.stop(); const nStop = sx.ev.length; await sleep(1500);
   check('III8 dayandırdıqdan sonra jurnal avtomatik davam etmir', sx.on === false && sx.ev.length === nStop, sx.ev.length + ' vs ' + nStop);
+  let savedFile = null; k.ACOBDFiles = { saveText: async (name, text) => { savedFile = { name, text }; return { uri: 'file://ACOBD/' + name }; } };
+  const exp = await k.AutoLog.exportStopped();
+  check('III8a dayandırma TXT-ni ACOBD qovluğuna yazmaq üçün tam məzmun hazırlayır', exp.ok && savedFile && /12\. XAM NÜMUNƏLƏR/.test(savedFile.text) && /P0420/.test(savedFile.text), savedFile && savedFile.name);
+  check('III8b avtomatik TXT fayl adı ACOBD prefiksi daşıyır', /^ACOBD-jurnal-.*\.txt$/.test(savedFile && savedFile.name || ''), savedFile && savedFile.name);
   // saxlama və bərpa
   const saved = k.Store.get('autolog_last', null);
   check('III9 jurnal yaddaşa yazılıb', saved && saved.ev.length > 0 && saved.snap.dtc, '');
@@ -144,13 +150,13 @@ function wire(ctx, script) { // sahte adapter
   u.location = { hash: '#autolive' }; u.navigator = { clipboard: { writeText: async t => { copied = t; } } }; u.URL = { createObjectURL: () => 'blob:x' }; u.Blob = function () {}; u.MutationObserver = function () { this.observe = () => {}; }; u.addEventListener = () => {}; u.scrollTo = () => {};
   u.AutoLog.setAuto(false); u.AutoLog.setCurrent(s);
   require('vm').runInContext(uiSrc, u, { filename: 'ui-autolog' });
-  check('IV1  "Canlı göstərici" ekranı render olunur: düymələr və bütün PID-lər', /Kopyala/.test(view.innerHTML) && /TXT yüklə/.test(view.innerHTML) && /Bütün PID-lər/.test(view.innerHTML) && /\[REAL\]/.test(view.innerHTML) && /\[UNKNOWN\]/.test(view.innerHTML) && /\[STALE\]/.test(view.innerHTML), view.innerHTML.slice(0, 200));
+  check('IV1  "Canlı göstərici" ekranı render olunur: düymələr və bütün PID-lər', /Hamısını kopyala/.test(view.innerHTML) && /TXT yüklə/.test(view.innerHTML) && /Bütün PID-lər/.test(view.innerHTML) && /\[REAL\]/.test(view.innerHTML) && /\[UNKNOWN\]/.test(view.innerHTML) && /\[STALE\]/.test(view.innerHTML), view.innerHTML.slice(0, 200));
   u.location.hash = '#autodiag'; require('vm').runInContext("window.dispatchHashChange && 0", u);
   const hc = (u.__hc || null);
   const click = a => handlers.forEach(h => h({ target: { closest: () => ({ getAttribute: () => a }) } }));
   const render = u.eval ? null : null;
   click('copy'); await sleep(20);
-  check('IV2  "Kopyala": jurnal mətni buferə düşür (AI tapşırığı ilə)', copied && /AI-YƏ TAPŞIRIQ/.test(copied) && /P0420/.test(copied) && copied.indexOf('12. XAM NÜMUNƏLƏR') < 0, copied && copied.slice(0, 80));
+  check('IV2  "Hamısını kopyala": xam nümunələr daxil olmaqla tam jurnal buferə düşür', copied && /AI-YƏ TAPŞIRIQ/.test(copied) && /P0420/.test(copied) && copied.indexOf('12. XAM NÜMUNƏLƏR') >= 0, copied && copied.slice(0, 80));
   click('dl');
   check('IV3  "TXT yüklə": .txt faylı yaradılır', /^AC-OBD-.*\.txt$/.test(dlName || ''), dlName);
   u.AutoLog.setCurrent(null); view.innerHTML = '';
