@@ -548,7 +548,15 @@ window.AutoLog = (function () {
   function pidStatus(s, id, tRef) {
     if (id !== 'RV' && s.supported.length && s.supported.indexOf(id) < 0) return { st: 'UNSUPPORTED', why: 'ECU dəstəkləmir (nasazlıq deyil)' };
     var c = s.cnt[id];
-    if (!c) { if (s.bad[id]) return { st: 'INVALID', why: 'natamam/etibarsız cavab gəldi' }; if (s.attempts && s.attempts[id] > 0) return { st: 'UNKNOWN', why: 'TEST EDİLİB: sorğu göndərilib, etibarlı cavab alınmayıb' }; return { st: 'UNKNOWN', why: P(id) || id === 'RV' ? 'TEST EDİLMƏYİB: jurnal dövründə etibarlı oxunuş olmayıb' : 'dekoder yoxdur (xam HEX bölməsinə baxın)' }; }
+    if (!c) {
+      if (s.bad && s.bad[id]) return { st: 'INVALID', why: 'natamam/etibarsız cavab gəldi' };
+      var attempts = s.attempts || {};
+      if (attempts[id] > 0) return { st: 'UNKNOWN', why: 'TEST EDİLİB: sorğu göndərilib, etibarlı cavab alınmayıb' };
+      // ECU PID-ni dəstəklədiyini bildirib, amma jurnal zamanı sorğu göndərilməyibsə,
+      // bunu dekoder çatışmazlığı ilə qarışdırma: test edilməyib.
+      if (s.supported && s.supported.indexOf(id) >= 0) return { st: 'UNKNOWN', why: 'TEST EDİLMƏYİB: ECU dəstəkləyir, jurnal dövründə sorğu göndərilməyib' };
+      return { st: 'UNKNOWN', why: P(id) || id === 'RV' ? 'TEST EDİLMƏYİB: jurnal dövründə etibarlı oxunuş olmayıb' : 'dekoder yoxdur (xam HEX bölməsinə baxın)' };
+    }
     if (tRef - c.tl > STALE_MS) return { st: 'STALE', why: 'son dəyər ' + Math.round((tRef - c.tl) / 1000) + ' s əvvəl oxunub' };
     return { st: 'REAL', why: '' };
   }
