@@ -18,6 +18,18 @@ jobs:
         with:
           node-version: 20
 
+      - name: Paketləri quraşdır və Filesystem-i yoxla
+        run: |
+          npm install --no-audit --no-fund
+          npm ls @capacitor/filesystem
+          node -e "require.resolve('@capacitor/filesystem')"
+          node tests/build-config-tests.js
+
+      - name: BLE faylını qur
+        run: |
+          npm run build:ble
+          test -s www/js/ble.js
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -47,16 +59,6 @@ jobs:
           name: AC-OBD-single-html
           path: dist/AC-OBD-single.html
 
-      - name: Paketləri quraşdır
-        run: npm install
-        
-      - name: Paketləri quraşdır
-        run: npm install
-
-      - name: BLE faylını qur
-        run: |
-          npm run build:ble
-          test -f www/js/ble.js
 
       - name: DTC və PID bazasını qur (oflayn, data/obdex)
         run: |
