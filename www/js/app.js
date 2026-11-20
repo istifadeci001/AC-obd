@@ -48,6 +48,14 @@
     var d = DTC_DB[code];
     if (!d) return '<div class="card">' + esc(t('dtc_notfound')) + '</div>';
     var name = lang === 'en' ? d.en : d.az;
+    var active = getActive();
+    var mfr = window.DTCManufacturer && active ? window.DTCManufacturer.lookup(code, active.make) : null;
+    var mfrText = {
+      az: { title: 'İstehsalçıya məxsus əlavə məlumat', note: 'Mənbə tərifi ingiliscədir. Model, il, mühərrik və ECU uyğunluğu ayrıca təsdiqlənməyib; bu, təmir göstərişi deyil.' },
+      ru: { title: 'Дополнительное описание производителя', note: 'Исходное описание на английском. Совместимость с моделью, годом, двигателем и ECU отдельно не подтверждена; это не инструкция по ремонту.' },
+      en: { title: 'Manufacturer-specific reference', note: 'Source text is in English. Model, year, engine and ECU applicability has not been independently verified; this is not a repair instruction.' }
+    }[lang] || { title: 'Manufacturer-specific reference', note: 'Source text is in English and vehicle applicability is not independently verified.' };
+    var manufacturerCard = mfr ? '<div class="card"><label>' + esc(mfrText.title) + '</label><p><b>' + esc(mfr.manufacturer) + '</b></p><p>' + esc(mfr.description) + '</p><p class="sm">' + esc(mfrText.note) + '</p></div>' : '';
     return '<div class="card"><b>' + esc(code) + '</b><p>' + esc(name) + '</p>' +
       (lang === 'az' ? '<p class="sm">' + esc(d.en) + '</p>' : '') +
       '<label>' + esc(t('dtc_causes')) + '</label>' + list(d.causes) +
@@ -55,7 +63,7 @@
       '<label>' + esc(t('dtc_check')) + '</label>' + list(d.check) +
       '<label>' + esc(t('dtc_sensors')) + '</label>' + list(d.sensors) +
       '<label>' + esc(t('dtc_related')) + '</label><p>' + esc(d.related.join(', ')) + '</p>' +
-      '<p class="sm">' + esc(t('dtc_note')) + '</p></div>';
+      '<p class="sm">' + esc(t('dtc_note')) + '</p></div>' + manufacturerCard;
   }
 
   var SCREENS = {

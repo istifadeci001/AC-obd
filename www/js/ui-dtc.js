@@ -58,6 +58,9 @@
     stfam: ['Bazada bu kod yoxdur: yalnız ailə üzrə ümumi izah (yoxlanmış deyil).', 'Кода нет в базе: только общее описание семейства (не проверено).', 'Code not in database: general family description only (unverified).'],
     stbig: ['Mənbə: obdex (CC0). Bizim tərəfdən yoxlanmayıb.', 'Источник: obdex (CC0). Нами не проверено.', 'Source: obdex (CC0). Not verified by us.'],
     sttr: ['AZ/RU açıqlama maşın tərcüməsidir (AI), yoxlanmayıb.', 'Описание AZ/RU — машинный перевод (ИИ), не проверен.', 'AZ/RU text is machine translation (AI), unverified.'],
+    mfrHead: ['İstehsalçıya məxsus əlavə məlumat', 'Дополнительное описание производителя', 'Manufacturer-specific reference'],
+    mfrBrand: ['İstehsalçı', 'Производитель', 'Manufacturer'],
+    mfrNote: ['Mənbə tərifi ingiliscədir. Model, il, mühərrik və ECU uyğunluğu ayrıca təsdiqlənməyib; bu, təmir göstərişi deyil.', 'Исходное описание на английском. Совместимость с моделью, годом, двигателем и ECU отдельно не подтверждена; это не инструкция по ремонту.', 'Source text is in English. Model, year, engine and ECU applicability has not been independently verified; this is not a repair instruction.'],
     stown: ['Ad bizim əl ilə yazılmış bazadan, yoxlanmamışdır.', 'Название из нашей базы, написанной вручную, не проверено.', 'Name from our hand-written database, unverified.'],
     rev: ['Mənbədə yoxlanma tarixi', 'Дата проверки в источнике', 'Reviewed date in source'],
     extnote: ['Aşağıdakı xarici axtarışlar proqramın öz bazasından deyil, internetdəndir.', 'Внешний поиск ниже — из интернета, не из базы приложения.', 'The external searches below come from the internet, not from the app database.'],
@@ -90,9 +93,13 @@
   }
   function ul(a) { return a && a.length ? '<ul>' + a.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '<p class="sm">—</p>'; }
   function code() { return String(Store.get('dtc_open', '')).toUpperCase(); }
-  function veh() {
+  function activeVeh() {
     var g = Store.get('garage', []), id = Store.get('activeVehicle', null), v = null;
     g.forEach(function (x) { if (x.id === id) v = x; });
+    return v;
+  }
+  function veh() {
+    var v = activeVeh();
     return v ? [v.make, v.model, v.year].filter(Boolean).join(' ') : '';
   }
   function sysOf(c) { return t(c[0] === 'P' ? 'sysP' : (c[0] === 'B' ? 'sysB' : (c[0] === 'C' ? 'sysC' : 'sysU'))); }
@@ -114,7 +121,8 @@
       view.innerHTML = '<h2>' + esc(t('code')) + '</h2>' + card('<p>' + esc(t('nosel')) + '</p>');
       return;
     }
-    var e = window.DTC_DB[c], v = veh(), cached = Store.get(trKey(c), ''), dg = danger(e, c), f = e.flags;
+    var vehicle = activeVeh(), e = window.DTC_DB[c], v = veh(), cached = Store.get(trKey(c), ''), dg = danger(e, c), f = e.flags;
+    var mfr = window.DTCManufacturer && vehicle ? window.DTCManufacturer.lookup(c, vehicle.make) : null;
     var q = encodeURIComponent(c + (v ? ' ' + v : ''));
     var seq = [t('seq1'), t('seq2')].concat(e.check || [], [t('seq3'), t('seq4')]);
     var status = e.family ? t('stfam') : (e.big ? t('stbig') + (e.translated ? ' ' + t('sttr') : '') + (e.own && L === 'az' ? ' ' + t('stown') : '') : t('stown'));
@@ -130,6 +138,7 @@
     h += card('<b>' + esc(name) + '</b>' + (L !== 'en' && e.en && e.en !== name ? '<p class="sm">' + esc(e.en) + '</p>' : '') +
       row(t('sys'), sysOf(c)) + row(t('type'), genOf(c)) +
       (f ? row(t('mil'), f[0] ? t('may') : t('none')) + row(t('emis'), f[1] ? t('yes') : t('no')) + row(t('drive'), f[2] ? t('yes') : t('no')) + row(t('limp'), f[3] ? t('possible') : t('nonote')) : ''));
+    if (mfr) h += card('<label>' + esc(t('mfrHead')) + '</label>' + row(t('mfrBrand'), mfr.manufacturer) + '<p>' + esc(mfr.description) + '</p><p class="sm">' + esc(t('mfrNote')) + '</p>');
     if (e.desc) {
       var inLang = e.translated || L === 'en';
       h += card('<label>' + esc(t('desc') + (inLang ? '' : t('descen'))) + '</label><p>' + esc(e.desc) + '</p>' +
