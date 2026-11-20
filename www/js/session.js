@@ -442,8 +442,8 @@ window.AutoLog = (function () {
   if (window.OBD && OBD.on) OBD.on(onObd);
 
   // ---------- Analiz: saniyə-saniyə rejim, fazalar, statistika, hadisələr ----------
-  var KMAP = { UNKNOWN: 'UNKNOWN', KEY_ON: 'KEYON', ENGINE_OFF: 'OFF', CRANKING: 'CRANK', WARMUP: 'WARMUP', IDLE: 'IDLE', DRIVING: 'DRIVE', RUNNING: 'RUNNOSPD' };
-  var RUNB = { IDLE: 1, DRIVE: 1, RUNNOSPD: 1, WARMUP: 1 };
+  var KMAP = { UNKNOWN: 'UNKNOWN', KEY_ON: 'KEYON', ENGINE_OFF: 'OFF', CRANKING: 'CRANK', WARMUP: 'WARMUP', IDLE: 'IDLE', STATIONARY_REV: 'STATIONARY_REV', DRIVING: 'DRIVE', RUNNING: 'RUNNOSPD' };
+  var RUNB = { IDLE: 1, STATIONARY_REV: 1, DRIVE: 1, RUNNOSPD: 1, WARMUP: 1 };
   // Rejim təyini EngineState modulundadır (təzə RPM tələb olunur; RPM=0 heç vaxt "işləyir" deyil; stale -> UNKNOWN).
   // hadRun: bu sessiyada mühərrik işləyibsə RPM<100 "KEYON" yox, "OFF" (mühərrik dayandırılıb) olur.
   function classify(rpm, spd, clt, hadRun) {
@@ -462,9 +462,9 @@ window.AutoLog = (function () {
     return base + '/' + th;
   }
   var BASE = { KEYON: 'Açar ON, mühərrik söndürülü', CRANK: 'Start / çevirmə (100–400 rpm)', IDLE: 'Boş gediş (sürət 0)', DRIVE: 'Hərəkət (sürət > 0)', RUNNOSPD: 'Mühərrik işləyir, sürət məlum deyil', UNKNOWN: 'UNKNOWN: RPM oxunmur, rejim müəyyən edilə bilmir' };
-  BASE.OFF = 'Mühərrik dayandırılıb (ENGINE OFF)'; BASE.WARMUP = 'İsinmə: mühərrik işləyir, boş gediş, ECT < 80 °C';
+  BASE.STATIONARY_REV = 'Dayanmış avtomobildə qaz verilir (sürət 0, yüksək RPM)'; BASE.OFF = 'Mühərrik dayandırılıb (ENGINE OFF)'; BASE.WARMUP = 'İsinmə: mühərrik işləyir, boş gediş, ECT < 80 °C';
   var TH = { cold: 'soyuq (<50 °C)', warm: 'isinir (50–79 °C)', hot: 'isti (≥80 °C)', unk: '' };
-  function phaseName(key) { var a = key.split('/'); return BASE[a[0]] + (TH[a[1]] ? ', ' + TH[a[1]] : (a[1] === 'unk' && (a[0] === 'IDLE' || a[0] === 'DRIVE' || a[0] === 'RUNNOSPD') ? ', ECT məlum deyil' : '')); }
+  function phaseName(key) { var a = key.split('/'); return BASE[a[0]] + (TH[a[1]] ? ', ' + TH[a[1]] : (a[1] === 'unk' && (a[0] === 'IDLE' || a[0] === 'STATIONARY_REV' || a[0] === 'DRIVE' || a[0] === 'RUNNOSPD') ? ', ECT məlum deyil' : '')); }
 
   // Snapshot nə vaxt oxunub və hesabat anında nə qədər köhnədir (köhnə məlumat yeni kimi təqdim edilmir)
   function ageTxt(iso, restored) {

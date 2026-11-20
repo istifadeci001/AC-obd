@@ -425,7 +425,7 @@
     }
     else if (a === 'resume') { AutoLog.resume(); say('Jurnal davam edir.'); rerender(); }
     else if (a === 'restart') { AutoLog.clear(); if (OBD.S.state === 'ecu') AutoLog.start(true); say('Yeni jurnal başladı.'); rerender(); }
-    else if (a === 'take') { AutoLog.takeOver(); say('Avto-jurnal sorğu siyahısını geri aldı.'); }
+    else if (a === 'take') { AutoLog.takeOver(); say('Avto-jurnal sorğu siyahısını əl ilə geri aldı.'); }
     else if (a === 'auto') { AutoLog.setAuto(!AutoLog.auto()); say('Avto-başlat ' + (AutoLog.auto() ? 'açıldı' : 'bağlandı') + '.'); rerender(); }
   });
   setInterval(function () { var c = cur(); if (screens[c]) paint(c === 'autodiag' ? 'diag' : 'full'); }, 2000);
@@ -434,7 +434,7 @@
     var dl = document.getElementById('drawerlist'); if (!dl) return;
     ITEMS.forEach(function (it) { if (!dl.querySelector('a[href="#' + it[0] + '"]')) { var a = document.createElement('a'); a.href = '#' + it[0]; a.textContent = it[1]; dl.appendChild(a); } });
   }
-  function apply() { var c = cur(); if (screens[c]) { msg = ''; prev = false; AutoLog.takeOver(); rerender(); window.scrollTo(0, 0); } addDrawer(); }
+  function apply() { var c = cur(); if (screens[c]) { msg = ''; prev = false; rerender(); window.scrollTo(0, 0); } addDrawer(); }
   var dl0 = document.getElementById('drawerlist'); if (dl0) new MutationObserver(addDrawer).observe(dl0, { childList: true });
   window.addEventListener('hashchange', apply); addDrawer(); apply();
 })();

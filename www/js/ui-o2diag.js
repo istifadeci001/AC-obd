@@ -2,15 +2,15 @@
   'use strict';
   var view = document.getElementById('view'), S = OBD.S, ctx = Session.ctx;
   var msg = '', err = '', busy = '', res = null, focusPref = false;
-  var RG = { cold: 'Soyuq mühərrik', warm: 'Mühərrik isinir (60–80 °C)', idle: 'İsti boş gediş', r2500: 'Sabit 2500 rpm', moving: 'Hərəkətdə', off: 'Mühərrik söndürülü', other: 'Digər rejim', unknown: 'Bilinmir' };
+  var RG = { cold: 'Soyuq mühərrik', warm: 'Mühərrik isinir (60–80 °C)', idle: 'İsti boş gediş', r2500: 'Sabit 2500–3000 rpm', moving: 'Hərəkətdə', off: 'Mühərrik söndürülü', other: 'Digər rejim', unknown: 'Bilinmir' };
   var GUIDE = {
     cold: 'Soyuq rejim yalnız qızdırıcı yoxlaması üçün isteğe bağlıdır. İsti test üçün mühərriki qızdırın.',
     warm: 'Soyuducu temperaturu 80 °C-ə çatana qədər gözləyin.',
     idle: 'Boş gediş rejimi toplanır: qaza toxunmayın, dayanın.',
-    r2500: 'Sabit 2500 rpm toplanır: qaz pedalını sabit saxlayın.',
+    r2500: 'Sabit 2500–3000 rpm toplanır: qaz pedalını sabit saxlayın.',
     moving: 'Avtomobil hərəkətdədir. Test yalnız dayanmış vəziyyətdə aparılır.',
     off: 'Mühərrik söndürülüb. Mühərriki işə salın.',
-    other: 'RPM-i sabit saxlayın: boş gediş (500–1200) və ya 2500 ± 250 rpm.',
+    other: 'RPM-i sabit saxlayın: boş gediş (500–1200) və ya 2500–3000 rpm.',
     unknown: 'RPM və ya soyuducu temperaturu hələ oxunmayıb.'
   };
   var LC = { 'Yüksək': 'bad', 'Orta': 'no', 'Aşağı': 'sm', 'Əlamət tapılmadı': 'ok', 'Müəyyən edilə bilmir': 'sm' };
@@ -39,7 +39,7 @@
       '<li>Adapteri qoşun. Aşağıdakı «Sensorlar» bölməsində B1S1 və B1S2 «təsdiqlənib» görünməlidir. Təsdiqlənməyibsə katalizator nəticəsi çıxmayacaq.</li>' +
       '<li>«Xəta kodlarını oxu» basın (P0420 və s. nəticəyə təsir edir).</li>' +
       '<li>Mühərriki soyuducu temperaturu ≥80 °C olana qədər qızdırın.</li>' +
-      '<li>«Testi başlat» basın. Əvvəl boş gedişdə ≥30 saniyə gözləyin, sonra qaz pedalı ilə 2500 rpm-i sabit saxlayın (≥30 saniyə, tövsiyə 45–60).</li>' +
+      '<li>«Testi başlat» basın. Əvvəl boş gedişdə ≥30 saniyə gözləyin, sonra qaz pedalı ilə 2500–3000 rpm aralığında sabit saxlayın (≥30 saniyə, tövsiyə 45–60).</li>' +
       '<li>İstəsəniz «Fokus rejimi»ni açın: yalnız O2 və RPM sorğulanır, nümunə tezliyi artır (reaksiya sürəti üçün). Soyuducu temperaturu və sürət son oxunmuş dəyərdən götürülür, ona görə dayandığınızdan əmin olun.</li>' +
       '<li>Testi dayandırın. İstəyə görə «Mode 06 oxu» (yalnız test dayananda).</li>' +
       '<li>«Təhlil et» basın və hər nəticənin sübutuna, ölçülmüş göstəricilərinə və növbəti yoxlama addımına baxın.</li>' +
@@ -64,7 +64,7 @@
     var rg = st.on ? st.cur : 'unknown';
     h += row('Hazırkı rejim', RG[rg] || rg, rg === 'idle' || rg === 'r2500' ? 'ok' : 'no');
     h += '<p class="sm">' + esc(GUIDE[rg] || '') + '</p>';
-    [['idle', 'İsti boş gediş'], ['r2500', 'Sabit 2500 rpm'], ['cold', 'Soyuq (isteğe bağlı)']].forEach(function (g) {
+    [['idle', 'İsti boş gediş'], ['r2500', 'Sabit 2500–3000 rpm'], ['cold', 'Soyuq (isteğe bağlı)']].forEach(function (g) {
       var s = st.reg[g[0]].sec, pct = Math.min(100, s / 30 * 100);
       h += '<div class="row"><span class="k">' + esc(g[1]) + '</span><span class="' + (s >= 30 ? 'ok' : 'sm') + '">' + s + ' s / 30 s</span></div>' +
         '<div style="height:6px;border-radius:5px;background:#0c1424;margin:2px 0 8px"><div style="height:6px;border-radius:5px;background:linear-gradient(90deg,#34d399,#22d3ee);width:' + pct.toFixed(0) + '%"></div></div>';

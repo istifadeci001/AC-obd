@@ -96,7 +96,7 @@ window.O2Diag = (function () {
     if (ect < 80) return 'warm';
     if (spd !== null && spd !== undefined && spd > 0) return 'moving';
     if (rpm >= 500 && rpm <= 1200 && c.rpmRange <= 250) return 'idle';
-    if (rpm >= 2250 && rpm <= 2750 && c.rpmRange <= 150) return 'r2500';
+    if (rpm >= 2500 && rpm <= 3000 && c.rpmRange <= 150) return 'r2500';
     return 'other';
   }
 
@@ -123,7 +123,7 @@ window.O2Diag = (function () {
     var nm = role === 'front' ? 'Ön (B1S1)' : 'Arxa (B1S2)';
     if (!sn) { h.reasons.push(nm + ' sensor PID-i dəstəklənmir və ya mövqeyi təsdiqlənməyib. Başqa PID bunun əvəzinə istifadə edilmir.'); return h; }
     var hv = hot(inp, sn.pid);
-    if (!hv || hv.v.length < 20) { h.reasons.push('İsti rejimdə (boş gediş və ya 2500 rpm) PID ' + sn.pid + ' üçün nümunə azdır (<20).'); return h; }
+    if (!hv || hv.v.length < 20) { h.reasons.push('İsti rejimdə (boş gediş və ya 2500–3000 rpm) PID ' + sn.pid + ' üçün nümunə azdır (<20).'); return h; }
     h.avail = true;
     var st = stats(hv.v), narrow = sn.kind === 'narrow', u = narrow ? ' V' : ' λ';
     h.st = st;
@@ -180,8 +180,8 @@ window.O2Diag = (function () {
     }
     if (r25 && r25.v.length >= 15) {
       var r5 = stats(r25.v);
-      mis.measured.push('2500 rpm rejimi: orta ' + Math.round(r5.mean) + ', std ' + f1(r5.std) + ' rpm');
-      if (r5.std > 100) { mis.pts += 1; mis.evidence.push('Sabit 2500 rpm-də RPM tərpənir (std ' + f1(r5.std) + '): qaz pedalı və ya yanma problemi.'); }
+      mis.measured.push('2500–3000 rpm rejimi: orta ' + Math.round(r5.mean) + ', std ' + f1(r5.std) + ' rpm');
+      if (r5.std > 100) { mis.pts += 1; mis.evidence.push('Sabit 2500–3000 rpm-də RPM tərpənir (std ' + f1(r5.std) + '): qaz pedalı və ya yanma problemi.'); }
     }
     var misData = mcodes.length || (rid && rid.v.length >= 15);
     if (!misData) { mis.level = LV.U; mis.reasons.push('Misfire kodu yoxdur və boş gediş RPM üçün kifayət qədər nümunə yoxdur.'); }
@@ -204,12 +204,12 @@ window.O2Diag = (function () {
       });
     }
     if (ti) tdesc('Boş gediş', ti);
-    if (th) tdesc('2500 rpm', th);
+    if (th) tdesc('2500–3000 rpm', th);
     if (ti && th) {
       var dlt = ti.total - th.total;
-      mix.measured.push('Korreksiya cəmi: boş gediş ' + f1(ti.total) + ' %, 2500 rpm ' + f1(th.total) + ' %');
-      if (dlt >= 8) { mix.pts += 1; mix.evidence.push('Boş gedişdə korreksiya 2500 rpm-dən ' + f1(dlt) + ' % yüksəkdir: vakuum/qeyri-ölçülmüş hava sızması əlaməti (egzoz sızması ilə də oxşar ola bilər).'); }
-      else if (dlt <= -8) { mix.pts += 1; mix.evidence.push('2500 rpm-də korreksiya boş gedişdən ' + f1(-dlt) + ' % yüksəkdir: MAF/yanacaq təchizatı əlaməti ola bilər.'); }
+      mix.measured.push('Korreksiya cəmi: boş gediş ' + f1(ti.total) + ' %, 2500–3000 rpm ' + f1(th.total) + ' %');
+      if (dlt >= 8) { mix.pts += 1; mix.evidence.push('Boş gedişdə korreksiya 2500–3000 rpm-dən ' + f1(dlt) + ' % yüksəkdir: vakuum/qeyri-ölçülmüş hava sızması əlaməti (egzoz sızması ilə də oxşar ola bilər).'); }
+      else if (dlt <= -8) { mix.pts += 1; mix.evidence.push('2500–3000 rpm-də korreksiya boş gedişdən ' + f1(-dlt) + ' % yüksəkdir: MAF/yanacaq təchizatı əlaməti ola bilər.'); }
     }
     var mapI = ser(inp, 'idle', '0B');
     if (mapI && mapI.v.length >= 10) {
@@ -218,7 +218,7 @@ window.O2Diag = (function () {
       if (ms.mean > 60 && ti && ti.total > 5) { mix.pts += 1; mix.evidence.push('Boş gedişdə MAP yüksəkdir (' + f1(ms.mean) + ' kPa) və korreksiya müsbətdir: vakuum sızması əlaməti (atmosferli mühərrik üçün ümumi qayda).'); }
     }
     var mafI = ser(inp, 'idle', '10'), mafH = ser(inp, 'r2500', '10');
-    if (mafI && mafI.v.length >= 10) mix.measured.push('MAF, boş gediş: orta ' + f2(stats(mafI.v).mean) + ' g/san' + (mafH && mafH.v.length >= 10 ? ', 2500 rpm: ' + f2(stats(mafH.v).mean) + ' g/san' : ''));
+    if (mafI && mafI.v.length >= 10) mix.measured.push('MAF, boş gediş: orta ' + f2(stats(mafI.v).mean) + ' g/san' + (mafH && mafH.v.length >= 10 ? ', 2500–3000 rpm: ' + f2(stats(mafH.v).mean) + ' g/san' : ''));
     var fsv = hot(inp, '03');
     if (fsv && fsv.v.length >= 10) {
       var openN = fsv.v.filter(function (v) { return v === 1 || v === 4 || v === 8; }).length, bad = fsv.v.filter(function (v) { return v === 8 || v === 16; }).length;
@@ -226,7 +226,7 @@ window.O2Diag = (function () {
       if (bad >= 3) { mix.pts += 1; mix.evidence.push('ECU PID 03-də nasazlıqla bağlı rejim bildirir (' + bad + ' nümunə).'); }
       if (openN > fsv.v.length * 0.5 && !bad) mix.evidence.push('İsti mühərrikdə nümunələrin yarısından çoxu açıq döngədir: qarışıq nəticələri məhduddur.');
     }
-    if (!ti && !th) { mix.level = LV.U; mix.reasons.push('İsti boş gediş və ya 2500 rpm rejimində STFT/LTFT üçün kifayət qədər nümunə yoxdur.'); }
+    if (!ti && !th) { mix.level = LV.U; mix.reasons.push('İsti boş gediş və ya 2500–3000 rpm rejimində STFT/LTFT üçün kifayət qədər nümunə yoxdur.'); }
     else mix.level = lvl(mix.pts);
     mix.next = ['Vakuum şlanqlarını və giriş kollektorunu yoxlayın (tüstü testi ən etibarlı üsuldur)', 'Yanacaq təzyiqini manometrlə ölçün', 'MAF sensorunu və hava filtrini yoxlayın'];
     mix.physical = 'Fiziki yoxlama tələb olunur: tüstü testi, yanacaq təzyiqi ölçüsü.';
@@ -263,14 +263,14 @@ window.O2Diag = (function () {
     /* egzoz sızması */
     var leak = res('leak', 'Egzoz sızması ehtimalı');
     var lp = 0;
-    if (ti && th && ti.total - th.total >= 8) { lp += 1; leak.evidence.push('Boş gedişdə müsbət korreksiya 2500 rpm-dən yüksəkdir (qeyri-ölçülmüş hava əlaməti).'); }
+    if (ti && th && ti.total - th.total >= 8) { lp += 1; leak.evidence.push('Boş gedişdə müsbət korreksiya 2500–3000 rpm-dən yüksəkdir (qeyri-ölçülmüş hava əlaməti).'); }
     if (rh.avail && rr && rr.kind === 'narrow' && !rh.stuck && rh.st.mean < 0.25) { lp += 1; leak.evidence.push('Arxa sensor həmişə aşağıdır (orta ' + f2(rh.st.mean) + ' V): arxa tərəfdə hava qarışması və ya sensor.'); }
     if (fh.avail && fr && fr.kind === 'narrow' && !fh.stuck && fh.st.mean < 0.35 && sthot && sthot.v.length >= 10 && stats(sthot.v).mean > 5) { lp += 1; leak.evidence.push('Ön sensor kasıb göstərir (orta ' + f2(fh.st.mean) + ' V), ECU yanacaq əlavə edir: kollektor/giriş sızması ehtimalı.'); }
     if (codes && (codes.indexOf('P0171') >= 0 || codes.indexOf('P0174') >= 0)) { lp += 1; leak.evidence.push('Kasıb qarışıq kodu (P0171/P0174) var.'); }
     leak.pts = lp;
     if (!ti && !th && !fh.avail && !rh.avail) { leak.level = LV.U; leak.reasons.push('Sensor və korreksiya məlumatı yoxdur.'); }
     else { leak.level = lp >= 3 ? LV.M : (lp >= 1 ? LV.L : LV.N); if (leak.level === LV.N) leak.evidence.push('Dolayı əlamət tapılmadı. Bu, sızmanın olmadığını sübut etmir.'); }
-    leak.measured = (ti && th) ? ['Korreksiya cəmi: boş gediş ' + f1(ti.total) + ' %, 2500 rpm ' + f1(th.total) + ' %'] : [];
+    leak.measured = (ti && th) ? ['Korreksiya cəmi: boş gediş ' + f1(ti.total) + ' %, 2500–3000 rpm ' + f1(th.total) + ' %'] : [];
     leak.next = ['Soyuq mühərrikdə egzoz kollektorunu və flanşları qulaqla/əllə (eldivenlə) yoxlayın', 'Kollektor və katalizator contalarında qara çöküntü izlərinə baxın', 'Tüstü (smoke) testi aparın'];
     leak.physical = 'Egzoz sızması OBD məlumatından birbaşa görünmür: yalnız dolayı əlamətlərdir, fiziki yoxlama mütləqdir. Bu nəticə "Orta"dan yüksək verilmir.';
 
@@ -283,10 +283,10 @@ window.O2Diag = (function () {
     if (rr && rr.kind !== 'narrow') why.push('Arxa sensor darzolaqlı deyil: bu qayda yalnız darzolaqlı arxa sensor üçündür.');
     var f25 = fr ? ser(inp, 'r2500', fr.pid) : null, r25s = rr ? ser(inp, 'r2500', rr.pid) : null;
     if (fr && rr) {
-      if (hiSec < 30) why.push('Sabit 2500 rpm rejimi kifayət deyil (' + hiSec + ' s, ≥30 s lazımdır).');
-      if (!f25 || f25.v.length < 20 || !r25s || r25s.v.length < 20) why.push('2500 rpm rejimində ön və arxa sensor üçün ≥20 nümunə yoxdur.');
+      if (hiSec < 30) why.push('Sabit 2500–3000 rpm rejimi kifayət deyil (' + hiSec + ' s, ≥30 s lazımdır).');
+      if (!f25 || f25.v.length < 20 || !r25s || r25s.v.length < 20) why.push('2500–3000 rpm rejimində ön və arxa sensor üçün ≥20 nümunə yoxdur.');
       var fs25 = ser(inp, 'r2500', '03');
-      if (fs25 && fs25.v.length >= 10) { var cl = fs25.v.filter(function (v) { return v === 2; }).length / fs25.v.length; if (cl < 0.7) why.push('2500 rpm rejimində qapalı döngə nümunələrin yalnız ' + Math.round(cl * 100) + ' %-dir.'); }
+      if (fs25 && fs25.v.length >= 10) { var cl = fs25.v.filter(function (v) { return v === 2; }).length / fs25.v.length; if (cl < 0.7) why.push('2500–3000 rpm rejimində qapalı döngə nümunələrin yalnız ' + Math.round(cl * 100) + ' %-dir.'); }
       if (fh.pts >= 3) why.push('Ön sensor nasaz görünür: əvvəl onu yoxlayın.');
       if (rh.stuck) why.push('Arxa sensor ilişmiş/açıq dövrə görünür: əvvəl onu yoxlayın.');
       if (mis.pts >= 3) why.push('Misfire əlamətləri var: əvvəl onu aradan qaldırın.');
@@ -295,8 +295,8 @@ window.O2Diag = (function () {
     var m6 = inp.m06 && inp.m06.tests && inp.m06.tests.length ? inp.m06 : null;
     if (!why.length) {
       var fv = f25.v, rv = r25s.v, fst = stats(fv), rst = stats(rv);
-      cat.measured.push('2500 rpm, ön (' + sname(fr) + '): aralıq ' + f2(fst.range) + (fr.kind === 'narrow' ? ' V' : ' λ') + ', orta ' + f2(fst.mean));
-      cat.measured.push('2500 rpm, arxa (' + sname(rr) + '): aralıq ' + f2(rst.range) + ' V, orta ' + f2(rst.mean));
+      cat.measured.push('2500–3000 rpm, ön (' + sname(fr) + '): aralıq ' + f2(fst.range) + (fr.kind === 'narrow' ? ' V' : ' λ') + ', orta ' + f2(fst.mean));
+      cat.measured.push('2500–3000 rpm, arxa (' + sname(rr) + '): aralıq ' + f2(rst.range) + ' V, orta ' + f2(rst.mean));
       if (fr.kind === 'narrow' && fst.range < 0.4) why.push('Ön sensorun amplitudu kifayət deyil (' + f2(fst.range) + ' V): müqayisə mümkün deyil.');
       else {
         var cp = 0;
@@ -340,7 +340,7 @@ window.O2Diag = (function () {
     if (!fr && sens.scheme) M.push('Ön sensor (B1S1) PID-i təsdiqlənməyib: ön sensor və katalizator qiymətləndirilmir.');
     if (!rr && sens.scheme) M.push('Arxa sensor (B1S2) PID-i təsdiqlənməyib: arxa sensor və katalizator qiymətləndirilmir.');
     if (idleSec < 30) M.push('İsti boş gediş rejimi (≥30 s) toplanmayıb (' + idleSec + ' s).');
-    if (hiSec < 30) M.push('Sabit 2500 rpm rejimi (≥30 s) toplanmayıb (' + hiSec + ' s).');
+    if (hiSec < 30) M.push('Sabit 2500–3000 rpm rejimi (≥30 s) toplanmayıb (' + hiSec + ' s).');
     if (secs(inp, 'cold') < 30) M.push('Soyuq mühərrik rejimi toplanmayıb (isteğe bağlı: qızdırıcının soyuq rejimdə yoxlanması üçün).');
     var sup = inp.supported || [];
     [['06', 'STFT'], ['07', 'LTFT'], ['0C', 'RPM'], ['05', 'Soyuducu temperaturu']].forEach(function (p) { if (sup.indexOf(p[0]) < 0) M.push(p[1] + ' (PID ' + p[0] + ') avtomobil tərəfindən dəstəklənmir.'); });

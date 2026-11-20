@@ -1,5 +1,5 @@
 // Mühərrik vəziyyəti: yalnız TƏZƏ (stale olmayan) RPM ilə təyin olunur. Saf məntiq: ELM/OBD-dən asılı deyil.
-// Vəziyyətlər: UNKNOWN, KEY_ON, ENGINE_OFF, CRANKING, WARMUP, IDLE, DRIVING, RUNNING (işləyir, sürət məlum deyil).
+// Vəziyyətlər: UNKNOWN, KEY_ON, ENGINE_OFF, CRANKING, WARMUP, IDLE, STATIONARY_REV, DRIVING, RUNNING (işləyir, sürət məlum deyil).
 //   RPM yoxdur/köhnədir      -> UNKNOWN (heç vaxt "işləyir" deyil)
 //   RPM < 100                -> KEY_ON (mühərrik hələ işləməyib) və ya ENGINE_OFF (işləyib, sonra dayanıb)
 //   100 ≤ RPM ≤ 400          -> CRANKING
@@ -15,11 +15,12 @@ window.EngineState = (function () {
     CRANKING: 'Start / çevirmə (100–400 rpm)',
     WARMUP: 'İsinmə: mühərrik işləyir, boş gediş, ECT < 80 °C',
     IDLE: 'Boş gediş (sürət 0, ECT ≥ 80 °C)',
+    STATIONARY_REV: 'Dayanmış avtomobildə qaz verilir (sürət 0, yüksək RPM)',
     DRIVING: 'Hərəkət (sürət > 0)',
     RUNNING: 'Mühərrik işləyir, sürət məlum deyil'
   };
   function num(x) { return typeof x === 'number' && isFinite(x) ? x : null; }
-  function isRunning(state) { return state === 'WARMUP' || state === 'IDLE' || state === 'DRIVING' || state === 'RUNNING'; }
+  function isRunning(state) { return state === 'WARMUP' || state === 'IDLE' || state === 'STATIONARY_REV' || state === 'DRIVING' || state === 'RUNNING'; }
 
   // x: { rpm, spd, clt }, dəyər yoxdursa (və ya köhnədirsə) null. hadRun: bu sessiyada mühərrik işləyibmi.
   function classify(x, hadRun) {
@@ -29,6 +30,7 @@ window.EngineState = (function () {
     if (rpm <= T.CRANK_MAX) return 'CRANKING';
     if (spd === null) return 'RUNNING';
     if (spd > 0) return 'DRIVING';
+    if (rpm >= 1200) return 'STATIONARY_REV';
     return (clt !== null && clt < T.WARM_BELOW) ? 'WARMUP' : 'IDLE';
   }
 
