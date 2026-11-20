@@ -402,6 +402,7 @@ window.AutoLog = (function () {
     }
     return cur;
   }
+  var exitExportPromise = null;
   function exportStopped() {
     if (!cur) return Promise.reject(new Error('Jurnal yoxdur'));
     if (cur.on) stop();
@@ -415,6 +416,23 @@ window.AutoLog = (function () {
       });
     }
     return Promise.resolve({ ok: false, name: name, text: text, reason: 'Filesystem plugin mövcud deyil; brauzer yükləməsinə keçin.' });
+  }
+  function finalizeOnExit() {
+    if (exitExportPromise) return exitExportPromise;
+    if (!cur) return Promise.resolve({ ok: true, skipped: true });
+    if (!cur.ev || !cur.ev.length) { clear(); return Promise.resolve({ ok: true, skipped: true }); }
+    if (cur.on) stop();
+    exitExportPromise = exportStopped().then(function (r) {
+      if (!r || !r.ok) throw new Error((r && r.reason) || 'ACOBD qovluğuna yazılmadı');
+      // Fayl uğurla yazıldıqdan sonra yalnız müvəqqəti sessiyanı silirik.
+      clear();
+      return r;
+    }).catch(function (e) {
+      note(cur, 'export-error', 'Çıxış zamanı jurnal saxlanmadı: ' + (e.message || e));
+      exitExportPromise = null;
+      return { ok: false, error: e.message || String(e) };
+    });
+    return exitExportPromise;
   }
   function takeOver() { ext = null; if (cur && cur.on) { cur.yielded = false; cur.mine = null; cur.idleSince = 0; note(cur, 'sys', 'Avto-jurnal sorğu siyahısını yenidən öz üzərinə götürdü.'); } }
   function resume() { if (cur && !cur.on && window.OBD && OBD.S.state === 'ecu') { cur.on = true; cur.manual = false; cur.t1 = null; note(cur, 'sys', 'Jurnal davam etdirildi.'); } }
@@ -674,9 +692,29 @@ window.AutoLog = (function () {
   }
 
   return {
-    start: start, stop: stop, exportStopped: exportStopped, resume: resume, takeOver: takeOver,
+    start: start, stop: stop, exportStopped: exportStopped, finalizeOnExit: finalizeOnExit, resume: resume, takeOver: takeOver,
     setAuto: function (v) { autoOn = !!v; try { if (window.Store) Store.set('autolog_auto', autoOn); } catch (e) {} }, auto: function () { return autoOn; }, clear: clear, restore: restore, sample: sample, snapshot: function () { if (cur) snapshot(cur); },
     session: function () { return cur; }, analyze: analyze, events: keyEvents, build: build, status: pidStatus, classify: classify,
     on: function (f) { subs.push(f); }, create: create, feed: feed, setCurrent: function (s) { cur = s; }
   };
+})();
+
+// Android tətbiqi arxa plana keçəndə və ya səhifə bağlananda aktiv jurnal fayla yazılır.
+(function () {
+  var pending = false;
+  function finalize() {
+    if (pending || !window.AutoLog) return;
+    pending = true;
+    var jobs = [];
+    try { jobs.push(AutoLog.finalizeOnExit()); } catch (e) {}
+    try { if (window.TransmissionDiagnostics && TransmissionDiagnostics.hasData()) jobs.push(TransmissionDiagnostics.saveReport('app-exit')); } catch (e) {}
+    Promise.all(jobs).then(function () { pending = false; }, function () { pending = false; });
+  }
+  if (window.addEventListener) {
+    window.addEventListener('pagehide', finalize);
+    window.addEventListener('beforeunload', finalize);
+  }
+  if (window.CapApp && typeof CapApp.addListener === 'function') {
+    CapApp.addListener('appStateChange', function (state) { if (state && state.isActive === false) finalize(); });
+  }
 })();

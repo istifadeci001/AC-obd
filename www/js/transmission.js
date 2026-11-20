@@ -2,7 +2,7 @@
   'use strict';
   if (!window.OBD || !window.ELM || !window.TransmissionCore) return;
   var view = document.getElementById('view'), core = window.TransmissionCore;
-  var result = null, busy = false, error = '', message = '', timer = null, timerStart = 0, timerName = '', measured = {}, fluid = { color: '', smell: '', debris: '' };
+  var result = null, busy = false, error = '', message = '', fluid = { color: '', smell: '', debris: '' }, lastSavedName = '';
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function cur() { return (location.hash || '#dashboard').slice(1); }
   function card(s, cls) { return '<div class="card' + (cls ? ' ' + cls : '') + '">' + s + '</div>'; }
@@ -16,17 +16,12 @@
     h += card(row('Adapter', OBD.S.deviceName || 'Qoşulmayıb', connected() ? 'ok' : 'no') + row('ECU bağlantısı', connected() ? 'ECU əlçatandır' : 'Əvvəl adapterə qoşulun', connected() ? 'ok' : 'no'));
     if (!connected()) h += card('<p>TCM yoxlaması üçün əvvəlcə “Qoşul” bölməsində ELM327 adapterinə qoşulun. Mühərrik məlumatları karobka məlumatı kimi göstərilməyəcək.</p>', 'warn');
     h += card('<b>1. TCM aşkarlanması və standart məlumatlar</b><p class="sm">CAN cavab başlıqları aktiv edilərək ECU cavabları ayrılır. 7E8–7EF cavablarından uyğun sorğu ünvanı müəyyən edilir. TCM-in cavab verməsi avtomobil və adapterdən asılıdır.</p>' + btn(busy ? 'Yoxlanılır…' : 'TCM-i tap və oxu', 'scan', !connected() || busy) + (result ? renderResult() : '<p class="sm">Hələ skan edilməyib.</p>'));
-    h += card('<b>2. D/R qoşulma gecikməsi — əl ilə ölçmə</b><p class="sm">Bu, sensorla avtomatik ölçmə deyil: köməkçi şəxs taymeri başladıb ötürmənin qoşulduğunu təsdiqləməlidir. Sürücü telefona toxunmamalıdır. Avtomobil düz yerdə, ayaq əyləci basılı, təhlükəsiz şəraitdə olmalıdır.</p>' +
-      '<div class="row"><span>P → D</span><span>' + esc(measured.PD === undefined ? 'ölçülməyib' : measured.PD.toFixed(2) + ' s') + '</span></div>' +
-      '<div class="row"><span>P → R</span><span>' + esc(measured.PR === undefined ? 'ölçülməyib' : measured.PR.toFixed(2) + ' s') + '</span></div>' +
-      (timer ? '<p class="big">' + ((Date.now() - timerStart) / 1000).toFixed(2) + ' s · ' + esc(timerName) + '</p>' : '') +
-      '<div class="grid"><button class="btn" data-tr="startPD" ' + (timer || !connected() ? 'disabled' : '') + '>P → D başlat</button><button class="btn" data-tr="startPR" ' + (timer || !connected() ? 'disabled' : '') + '>P → R başlat</button></div>' +
-      btn('Qoşuldu — vaxtı qeyd et', 'stopTimer', !timer, 'alt') + '<p class="sm">Gecikməyə universal saniyə norması qoyulmur; nəticə Kia servis spesifikasiyası ilə müqayisə edilməlidir.</p>');
+    h += card('<b>2. Sürüş zamanı transmissiya məlumatları</b><p class="sm">Avtomatik yol testi üçün TCM-dən real canlı göstəricilər tələb olunur. Hazırkı adapter jurnalında TCM adı görünür, lakin ISS, OSS, ATF temperaturu və faktiki pillə üçün təsdiqlənmiş Kia DID xəritəsi və real TCM cavabları hələ yoxdur. Buna görə bu versiya saxta pillə və keçid vaxtı yaratmır. TCM sorğu xəritəsi təsdiqlənəndə bu göstəricilər avtomatik qeydə alınacaq; sürücü telefona toxunmayacaq.</p>' + row('Cari faktiki pillə', 'NO DATA — TCM DID təsdiqlənməyib') + row('Pillə dəyişmə vaxtı', 'NO DATA — real TCM gear-state axını yoxdur') + row('ISS / OSS', 'NO DATA — TCM cavabı təsdiqlənməyib') + row('ATF temperaturu', 'NO DATA — TCM cavabı təsdiqlənməyib') + row('TCC slip', 'NO DATA — TCM cavabı təsdiqlənməyib') + row('Nəticə', 'Bu adapter jurnalından təkbaşına transmissiyanın sağlamlıq faizi hesablamaq olmaz'));
     h += card('<b>3. ATF yağının fiziki yoxlanması</b><p class="sm">OBD yağın rəngini, qoxusunu və metal qırıntılarını ölçmür. Bunlar fiziki baxışla qeyd olunur. ATF temperaturu TCM-dən oxunarsa ayrıca real dəyər kimi göstəriləcək.</p>' +
       '<label>Yağın rəngi</label><select id="tr-color"><option value="">Seçilməyib</option><option>Qırmızı / çəhrayı</option><option>Tünd qəhvəyi</option><option>Qara</option><option>Naməlum</option></select>' +
       '<label>Qoxu</label><select id="tr-smell"><option value="">Seçilməyib</option><option>Normal</option><option>Yanıq qoxusu</option><option>Naməlum</option></select>' +
       '<label>Metal qırıntısı / çöküntü</label><select id="tr-debris"><option value="">Seçilməyib</option><option>Görünmür</option><option>Var</option><option>Yoxlanmayıb</option></select>' + btn('Fiziki yoxlama qeydlərini saxla', 'fluidSave', false, 'alt') + '<p class="sm">Bu seçimlər istifadəçi qeydləridir, OBD ölçümü deyil.</p>');
-    h += card('<b>4. Nəticə və jurnal</b>' + btn('Hesabatı TXT kimi yüklə', 'export', !result && !Object.keys(measured).length && !fluid.color && !fluid.smell && !fluid.debris, 'alt') + (message ? '<p class="ok">' + esc(message) + '</p>' : '') + (error ? '<p class="bad">' + esc(error) + '</p>' : ''));
+    h += card('<b>4. Nəticə və jurnal</b>' + btn('ACOBD qovluğuna saxla', 'save', !hasData(), 'alt') + btn('Hesabatı kopyala', 'copy', !hasData(), 'alt') + btn('TXT yüklə', 'export', !hasData(), 'alt') + (lastSavedName ? row('Son fayl', lastSavedName, 'ok') : '') + (message ? '<p class="ok">' + esc(message) + '</p>' : '') + (error ? '<p class="bad">' + esc(error) + '</p>' : ''));
     view.innerHTML = h;
     var c = document.getElementById('tr-color'); if (c) c.value = fluid.color;
     c = document.getElementById('tr-smell'); if (c) c.value = fluid.smell;
@@ -107,36 +102,49 @@
     } catch (e) { error = 'Skan alınmadı: ' + e.message; Log.add('TCM', error); }
     busy = false; render();
   }
-  async function startTimer(name) {
-    if (!connected() || timer || busy) return;
-    OBD.stopPoll();
-    error = ''; message = 'Avtomobilin dayanması və mühərrikin işləməsi yoxlanılır…'; render();
-    try {
-      var speed = await OBD.readSpeed(), rpm = await OBD.readRpm();
-      if (speed === null) throw new Error('Sürət PID-i oxunmadı; təhlükəsiz dayanmanı təsdiqləmək mümkün deyil. Taymer başlamadı.');
-      if (speed > 0) throw new Error('Avtomobil hərəkətdədir (' + speed + ' km/saat). D/R testi bloklandı.');
-      if (rpm === null || rpm < 400) throw new Error('Mühərrikin işlədiyi təsdiqlənmədi. D/R gecikmə testi başlamadı.');
-      if (!confirm('Yalnız köməkçi şəxs telefonu idarə edəcək. Avtomobil düz yerdədir, əl əyləci çəkilib və ayaq əyləci basılı saxlanacaq. ' + name.replace('P','P → ') + ' ölçməsini başladaq?')) return;
-      timerName = name; timerStart = Date.now(); timer = true; message = 'Taymer başladı. Ötürmə qoşulan kimi köməkçi “Qoşuldu” düyməsinə bassın.';
-    } catch (e) { error = e.message; message = ''; }
-    render();
-  }
-  function stopTimer() { if (!timer) return; measured[timerName] = (Date.now() - timerStart) / 1000; timer = null; timerName = ''; render(); }
-  function exportText() {
-    var lines = ['ACOBD — TRANSMISSION TEST', 'Vehicle: Kia Forte 2015 1.8 MPI (A6GF1 provisional)', 'Date: ' + new Date().toISOString(), ''];
+  function hasData() { return !!(result || fluid.color || fluid.smell || fluid.debris || (window.Log && Log.all && Log.all().length)); }
+  function reportText() {
+    var lines = ['ACOBD — TRANSMISSION DIAGNOSTICS', 'Vehicle: Kia Forte 2015 1.8 MPI (A6GF1 — ilkin uyğunluq)', 'Date: ' + new Date().toISOString(), 'Adapter: ' + ((OBD.S && OBD.S.deviceName) || '—'), 'Protocol: ' + ((OBD.S && OBD.S.protocol) || '—'), ''];
     if (result) { lines.push('TCM/ECU SCAN:'); lines.push(JSON.stringify(result, null, 2)); }
-    lines.push('D/R delay manual timing: ' + JSON.stringify(measured));
-    lines.push('ATF physical inspection (user-entered): ' + JSON.stringify(fluid));
-    lines.push('Limitations: generic OBD cannot directly measure ATF chemical condition; enhanced Kia TCM data requires verified DID/PID mapping.');
-    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })); a.download = 'ACOBD-transmission-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt'; document.body.appendChild(a); a.click(); a.remove();
+    lines.push('ATF physical inspection (user-entered, not OBD): ' + JSON.stringify(fluid));
+    lines.push('', 'ROAD TEST STATUS:');
+    lines.push('Current gear: NO DATA — verified Kia TCM DID mapping unavailable.');
+    lines.push('Shift timing: NO DATA — no confirmed TCM gear-state stream.');
+    lines.push('ISS / OSS / ATF temperature / TCC slip: NO DATA until real TCM responses are verified.');
+    lines.push('', 'ADAPTER LOG (VIN response masked):');
+    lines.push(window.Log && Log.safeText ? Log.safeText(400) : 'Adapter log unavailable.');
+    lines.push('', 'RAW ELM TRANSACTIONS:');
+    lines.push(window.RawLog && RawLog.text ? RawLog.text() : 'Raw adapter transaction log unavailable.');
+    lines.push('', 'LIMITATION: Generic OBD PID results are not TCM enhanced data. No transmission health percentage is inferred from missing data.');
+    return lines.join('\n');
+  }
+  function fileName() {
+    var d = new Date(), p2 = function (n) { return ('0' + n).slice(-2); };
+    return 'ACOBD-karobka-' + d.getFullYear() + p2(d.getMonth()+1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.txt';
+  }
+  async function saveReport(reason) {
+    if (!hasData()) return { ok: true, skipped: true };
+    if (!window.ACOBDFiles || typeof ACOBDFiles.saveText !== 'function') throw new Error('ACOBD fayl yaddaş modulu mövcud deyil');
+    var name = fileName(), text = reportText();
+    await ACOBDFiles.saveText(name, text);
+    lastSavedName = name;
+    if (reason !== 'app-exit') { message = 'Karobka hesabatı ACOBD qovluğunda saxlanıldı: ' + name; render(); }
+    return { ok: true, name: name, text: text };
+  }
+  function copyReport() {
+    var text = reportText();
+    function fallback() { var a = document.createElement('textarea'); a.value = text; document.body.appendChild(a); a.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} a.remove(); message = ok ? 'Karobka hesabatı kopyalandı.' : 'Kopyalama alınmadı.'; render(); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { message = 'Karobka hesabatı kopyalandı.'; render(); }, fallback); else fallback();
+  }
+  function exportText() {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([reportText()], { type: 'text/plain;charset=utf-8' })); a.download = fileName(); document.body.appendChild(a); a.click(); a.remove();
   }
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-tr]'); if (!el) return;
     var a = el.getAttribute('data-tr');
     if (a === 'scan') scan();
-    else if (a === 'startPD') startTimer('PD');
-    else if (a === 'startPR') startTimer('PR');
-    else if (a === 'stopTimer') stopTimer();
+    else if (a === 'save') saveReport('manual').catch(function (e) { error = 'Saxlanmadı: ' + e.message; render(); });
+    else if (a === 'copy') copyReport();
     else if (a === 'fluidSave') { fluid.color = (document.getElementById('tr-color') || {}).value || ''; fluid.smell = (document.getElementById('tr-smell') || {}).value || ''; fluid.debris = (document.getElementById('tr-debris') || {}).value || ''; message = 'Fiziki yoxlama qeydləri saxlanıldı (OBD ölçümü deyil).'; render(); }
     else if (a === 'export') exportText();
   });
@@ -150,6 +158,6 @@
   var drawer = document.getElementById('drawerlist');
   function addDrawer() { if (drawer && !drawer.querySelector('a[href="#transmission"]')) { var a = document.createElement('a'); a.href = '#transmission'; a.textContent = 'Karobka testi'; drawer.appendChild(a); } }
   if (drawer) { new MutationObserver(addDrawer).observe(drawer, { childList: true }); addDrawer(); }
-  setInterval(function () { var el = document.getElementById('tr-clock'); if (timer && el) el.textContent = ((Date.now() - timerStart) / 1000).toFixed(2) + ' s · ' + timerName; }, 100);
+  window.TransmissionDiagnostics = { hasData: hasData, saveReport: saveReport, reportText: reportText };
   if (cur() === 'transmission') render();
 })();
