@@ -26,6 +26,9 @@ jobs:
       - name: OBDex məlumatını yoxla (sxem, təkrar, əlaqələr)
         run: node tools/validate-data.js
 
+      - name: İstehsalçı DTC əlavəsini yoxla (oflayn)
+        run: node tests/dtc-manufacturer-tests.js
+
       - name: Testləri işlət
         run: node tests/run.js
 
@@ -35,9 +38,18 @@ jobs:
       - name: Düzəliş testləri (Mode 06, DTC/MIL, engine state, adapter növbəsi)
         run: node tests/fix-tests.js
 
-      - name: Avto-jurnal testləri
-        run: node tests/autolog-tests.js
+      - name: Bir fayllı paket (göndərmək üçün)
+        run: node tools/bundle.js
 
+      - name: Bir fayllı paketi yüklə
+        uses: actions/upload-artifact@v4
+        with:
+          name: AC-OBD-single-html
+          path: dist/AC-OBD-single.html
+
+      - name: Paketləri quraşdır
+        run: npm install
+        
       - name: Paketləri quraşdır
         run: npm install
 
@@ -68,15 +80,6 @@ jobs:
               echo "window.DTC_TR_$l={};" > www/data/dtc-$l.js
             fi
           done
-
-      - name: Bir fayllı paket (göndərmək üçün)
-        run: node tools/bundle.js --full
-
-      - name: Bir fayllı paketi yüklə
-        uses: actions/upload-artifact@v4
-        with:
-          name: AC-OBD-single-html
-          path: dist/AC-OBD-single.html
 
       - name: Android layihəsini yarat
         run: npx cap add android
@@ -162,4 +165,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.6.0${DTC_NOTE}"
+          gh release create latest AC-OBD.apk --title "AC OBD son versiya" --notes "v1.5.0${DTC_NOTE}"
