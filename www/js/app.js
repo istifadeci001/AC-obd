@@ -1,8 +1,8 @@
 (function () {
   'use strict';
 
-  var SECTIONS = ['dashboard', 'connect', 'live', 'monitor', 'diag', 'dtc', 'freeze', 'advanced', 'vehicle', 'logging', 'reports', 'garage', 'settings'];
-  var PHASE = { connect: 3, live: 6, monitor: 10, diag: 9, dtc: 7, freeze: 7, advanced: 13, vehicle: 5, logging: 8, reports: 11 };
+  var SECTIONS = ['dashboard', 'connect', 'live', 'monitor', 'diag', 'dtc', 'freeze', 'advanced', 'vehicle', 'logging', 'reports', 'garage', 'transmission', 'settings'];
+  var PHASE = { connect: 3, live: 6, monitor: 10, diag: 9, dtc: 7, freeze: 7, advanced: 13, vehicle: 5, logging: 8, reports: 11, transmission: 14 };
   var BOTTOM = ['dashboard', 'connect', 'live', 'dtc'];
   var SYSTEMS = ['Engine ECU', 'Transmission / TCM', 'ABS', 'ESP', 'SRS / Airbag', 'EPS / Steering', 'BCM', 'HVAC / Climate Control', 'TPMS', 'Instrument Cluster', 'Immobilizer', 'Parking Assistance'];
   var lang = Store.get('lang', 'az');
@@ -138,6 +138,7 @@
         '<button class="btn alt" type="button" data-act="sample">' + esc(t('g_sample')) + '</button>' +
         '</form></div>';
     },
+    transmission: function () { return '<h2>Karobka testi</h2>'; },
     settings: function () {
       return '<h2>' + esc(t('nav_settings')) + '</h2><div class="card">' +
         '<label>' + esc(t('set_lang')) + '</label>' +
