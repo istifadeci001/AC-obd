@@ -163,6 +163,17 @@ function wire(ctx, script) { // sahte adapter
   click('auto'); check('IV4  "Avto-başlat" açarı işləyir', u.AutoLog.auto() === true, '');
   click('auto'); check('IV5  "Avto-başlat" yenidən bağlanır', u.AutoLog.auto() === false, '');
 
+  // ===== V. Tətbiqdən çıxış: ACOBD qovluğuna avtomatik yaz və müvəqqəti sessiyanı təmizlə =====
+  let exitFile = null;
+  u.ACOBDFiles = { saveText: async (name, text) => { exitFile = { name, text }; return { uri: 'file://Documents/ACOBD/' + name }; } };
+  const exitSession = u.AutoLog.create(Date.now() - 5000);
+  u.AutoLog.feed(exitSession, '0C', 850, exitSession.t0 + 1000);
+  exitSession.on = true;
+  u.AutoLog.setCurrent(exitSession);
+  const exitResult = await u.AutoLog.finalizeOnExit();
+  check('V1 tətbiqdən çıxışda canlı jurnal ACOBD qovluğuna yazılır', exitResult.ok && exitFile && /ACOBD-jurnal-.*\.txt$/.test(exitFile.name), exitFile && exitFile.name);
+  check('V2 fayl yazıldıqdan sonra müvəqqəti jurnal təmizlənir', u.AutoLog.session() === null && u.Store.get('autolog_last', null) === null, 'sessiya hələ saxlanır');
+
   console.log('\nAVTO-JURNAL TESTLƏRİ: ' + pass + ' keçdi, ' + fail + ' uğursuz');
   process.exit(fail ? 1 : 0);
 })();
