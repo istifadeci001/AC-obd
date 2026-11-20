@@ -1,0 +1,17 @@
+'use strict';
+var assert = require('assert');
+var fs = require('fs');
+var html = fs.readFileSync(require('path').join(__dirname, '../www/index.html'), 'utf8');
+assert(html.indexOf('js/obd.js') < html.indexOf('js/transmission-core.js'), 'OBD must load before transmission module');
+assert(html.indexOf('js/transmission-core.js') < html.indexOf('js/transmission.js'), 'core must load before UI module');
+var T = require('../www/js/transmission-core.js');
+var frames = T.parseFrames(['7E9 06 41 01 80 00 00 00', '7E8 06 41 01 00 00 00 00'], '41', '01');
+assert.strictEqual(frames.length, 2, 'separate multiple ECU responses');
+assert.strictEqual(frames[0].responseId, '7E9');
+assert.strictEqual(frames[0].requestId, '7E1');
+assert.deepStrictEqual(T.supportedPids([0x80, 0, 0, 0]), [1]);
+assert.deepStrictEqual(T.supportedPids([0x80, 0, 0, 0], 0xA0), [0xA1]);
+assert.deepStrictEqual(T.decodeGearA4([0xC0, 0x03, 0x03, 0xE8]), { gearSupported: true, gear: 3, ratioSupported: true, ratio: 1 });
+assert.deepStrictEqual(T.decodeDtcBytes([0x01, 0x71, 0x00, 0x00]), ['P0171']);
+assert.deepStrictEqual(T.parseFrames(['NO DATA'], '41', '01'), []);
+console.log('Transmission tests: 9 checks passed');
