@@ -153,6 +153,7 @@ const nl = a => a.join('\r') + '\r\r>';
   eq(S('RPM 99 -> söndürülü; 100 -> CRANKING; 400 -> CRANKING; 401 -> işləyir'), [cl(99, 0, 20, false), cl(100, 0, 20, false), cl(400, 0, 20, false), cl(401, 0, 20, false)], ['KEY_ON', 'CRANKING', 'CRANKING', 'WARMUP']);
   eq(S('RPM 800, sürət 0, ECT 40 -> WARMUP; ECT 90 -> IDLE; ECT bilinmir -> IDLE'), [cl(800, 0, 40, true), cl(800, 0, 90, true), cl(800, 0, null, true)], ['WARMUP', 'IDLE', 'IDLE']);
   eq(S('RPM 2000, sürət 60 -> DRIVING; sürət yoxdur -> RUNNING'), [cl(2000, 60, 90, true), cl(2000, null, 90, true)], ['DRIVING', 'RUNNING']);
+  eq(S('Dayanmış avtomobildə 2500–3000 rpm -> STATIONARY_REV'), [cl(2500, 0, 90, true), cl(3000, 0, 90, true), E.isRunning(cl(2800, 0, 90, true))], ['STATIONARY_REV', 'STATIONARY_REV', true]);
   const now = 1000000, V0 = { '0C': { v: 0, t: now - 500 }, '0D': { v: 0, t: now - 500 }, '05': { v: 22, t: now - 500 } };
   eq(R('OBD.values (RPM=0, təzə): mühərrik işləmir'), [E.fromValues(V0, now).state, E.fromValues(V0, now).running], ['KEY_ON', false]);
   eq(S('RPM dəyəri 20 s köhnədir -> UNKNOWN (işləyir DEYİL)'), [E.fromValues({ '0C': { v: 2500, t: now - 20000 } }, now).state, E.fromValues({ '0C': { v: 2500, t: now - 20000 } }, now).running], ['UNKNOWN', false]);

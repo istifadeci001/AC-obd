@@ -221,6 +221,8 @@ function wire(ctx, script) { // sahte adapter
   eq('Rejim: soyuq', O.classify({ rpm: 800, ect: 40, spd: 0, rpmRange: 50 }), 'cold');
   eq('Rejim: isti boş gediş', O.classify({ rpm: 800, ect: 90, spd: 0, rpmRange: 50 }), 'idle');
   eq('Rejim: sabit 2500', O.classify({ rpm: 2500, ect: 90, spd: 0, rpmRange: 60 }), 'r2500');
+  eq('Rejim: 3000 rpm də qəbul edilir', O.classify({ rpm: 3000, ect: 90, spd: 0, rpmRange: 60 }), 'r2500');
+  eq('Rejim: 3001 rpm test intervalından kənardır', O.classify({ rpm: 3001, ect: 90, spd: 0, rpmRange: 60 }), 'other');
   eq('Rejim: hərəkətdə sayılmır', O.classify({ rpm: 2500, ect: 90, spd: 30, rpmRange: 60 }), 'moving');
   eq('Rejim: qeyri-sabit 2500 sayılmır', O.classify({ rpm: 2500, ect: 90, spd: 0, rpmRange: 400 }), 'other');
   let an = O.analyze(mkInp({}));
