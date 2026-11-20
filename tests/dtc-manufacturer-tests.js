@@ -1,0 +1,25 @@
+const assert = require('assert');
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+
+const root = path.join(__dirname, '..');
+const sandbox = { window: {} };
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(path.join(root, 'www/js/dtc-mfr-data.js'), 'utf8'), sandbox, { timeout: 3000 });
+vm.runInContext(fs.readFileSync(path.join(root, 'www/js/dtc-mfr.js'), 'utf8'), sandbox, { timeout: 3000 });
+const api = sandbox.window.DTCManufacturer;
+assert.ok(api, 'manufacturer DTC lookup API should load');
+assert.strictEqual(api.getStats().manufacturers, 32);
+assert.strictEqual(api.getStats().definitions, 6770);
+assert.strictEqual(api.normalizeMake('Kia Motors'), 'KIA');
+assert.strictEqual(api.normalizeMake('VW'), 'VOLKSWAGEN');
+assert.strictEqual(api.normalizeMake('Mercedes-Benz'), 'MERCEDES');
+assert.strictEqual(api.lookup('P1102', 'Kia').description, 'HO2S11 Heater Circuit High Voltage');
+assert.strictEqual(api.lookup('P1102', 'Kia Motors').manufacturer, 'KIA');
+assert.strictEqual(api.lookup('P0420', 'Kia'), null, 'no Kia-specific P0420 must be invented');
+assert.strictEqual(api.lookup('P0420', 'Audi').manufacturer, 'AUDI');
+assert.strictEqual(api.lookup('P1102', 'Hyundai'), null, 'unsupported make must not fall back to another manufacturer');
+assert.strictEqual(api.lookup('<script>', 'Kia'), null, 'invalid code must be rejected');
+assert.strictEqual(api.lookup('P1102', 'Unknown Make'), null, 'unknown make must not guess');
+console.log('OK: manufacturer DTC security and lookup checks passed (13 assertions).');
