@@ -61,10 +61,17 @@
       '<div class="car">🚗 ' + esc(v ? [v.make, v.model, v.year].filter(Boolean).join(' ') : T('Avtomobil seçilməyib (Qaraj)', 'No vehicle selected (Garage)')) + '</div>' +
       '<div class="qa"><a class="main" href="#connect">🔌 ' + esc(ok ? T('Adapter', 'Adapter') : T('Qoşul', 'Connect')) + '</a><a href="#livediag">🩺 ' + esc(T('Diaqnostika', 'Diagnostics')) + '</a>' +
       '<a href="#dtc">⚠️ ' + esc(T('Kodlar', 'Codes')) + '</a><a href="#fuel">⛽ ' + esc(T('Yanacaq', 'Fuel')) + '</a></div></div>';
+    var mfrStats = window.DTCManufacturer
+      ? window.DTCManufacturer.getStats()
+      : { manufacturers: 0, definitions: 0, uniqueCodes: 0 };
+    var genericCount = window.DTC_COUNT || 0;
+    var databaseSummary = genericCount + ' ' + T('ümumi kod', 'generic codes') +
+      ' · ' + mfrStats.definitions + ' ' + T('istehsalçı təsviri', 'manufacturer definitions') +
+      ' · ' + mfrStats.manufacturers + ' ' + T('marka', 'makes');
     var info = '<div class="card" style="margin-top:14px">' +
       row(T('Dəstək yoxlaması', 'Compatibility'), cTxt, has && cs.no ? 'no' : (has ? 'ok' : 'sm')) +
       row(T('Saxlanmış xəta kodları', 'Stored fault codes'), codes) +
-      row(T('Xəta kodu bazası', 'DTC database'), (window.DTC_COUNT || 0) + ' ' + I.dash_codes) + '</div>';
+      row(T('Xəta kodu bazası', 'DTC database'), databaseSummary) + '</div>';
     var groups = GROUPS.map(function (g) {
       return '<div class="sect">' + esc(g[0]) + '</div><div class="grid">' + g[1].map(function (s) {
         return '<a class="tile" href="#' + s + '"><span class="ti">' + (ICON[s] || '•') + '</span><span>' + esc(I['nav_' + s] || LBL[s] || s) + '</span></a>';

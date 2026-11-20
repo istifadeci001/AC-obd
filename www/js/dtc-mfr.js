@@ -39,8 +39,9 @@
     };
   }
 
-  var definitionCount = 0;
+  var definitionCount = 0, uniqueCodes = Object.create(null);
   Object.keys(DATA).forEach(function (make) {
+    Object.keys(DATA[make] || {}).forEach(function (code) { uniqueCodes[code] = true; });
     definitionCount += Object.keys(DATA[make] || {}).length;
   });
 
@@ -48,7 +49,11 @@
     lookup: lookup,
     normalizeMake: normalizeMake,
     getStats: function () {
-      return { manufacturers: Object.keys(DATA).length, definitions: definitionCount };
+      return {
+        manufacturers: Object.keys(DATA).length,
+        definitions: definitionCount,
+        uniqueCodes: Object.keys(uniqueCodes).length
+      };
     }
   };
 })(window);
