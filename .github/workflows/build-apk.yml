@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -25,10 +26,10 @@ jobs:
           node -e "require.resolve('@capacitor/filesystem')"
           node tests/build-config-tests.js
 
-      - name: BLE faylını qur
+      - name: BLE faylını qur və yoxla
         run: |
           npm run build:ble
-          test -s www/js/ble.js
+          npm run verify:ble
 
       - uses: actions/setup-java@v4
         with:
@@ -41,14 +42,8 @@ jobs:
       - name: İstehsalçı DTC əlavəsini yoxla (oflayn)
         run: node tests/dtc-manufacturer-tests.js
 
-      - name: Testləri işlət
-        run: node tests/run.js
-
-      - name: OBDex inteqrasiya testləri
-        run: node tests/obdex-tests.js
-
-      - name: Düzəliş testləri (Mode 06, DTC/MIL, engine state, adapter növbəsi)
-        run: node tests/fix-tests.js
+      - name: Bütün avtomatik testləri işlət
+        run: npm test
 
       - name: Bir fayllı paket (göndərmək üçün)
         run: node tools/bundle.js
