@@ -1,5 +1,12 @@
 window.Transport = (function () {
-  var st = { id: null, wSvc: null, w: null, nSvc: null, n: null, wnr: false, onData: null, onDisc: null };
+  var st = { id: null, wSvc: null, w: null, nSvc: null, n: null, wnr: false, onData: null, onDisc: null, scanning: false, initialized: false };
+  var initPromise = null;
+  async function initialize() {
+    if (!B()) throw new Error('BLE modulu yüklənməyib. Android build zamanı BLE bundle yaradılmalıdır.');
+    if (st.initialized) return;
+    if (!initPromise) initPromise = B().initialize().then(function () { st.initialized = true; }).catch(function (e) { initPromise = null; throw e; });
+    return initPromise;
+  }
   function B() { return window.BleClient; }
   function txt(dv) {
     var s = '';
@@ -12,24 +19,40 @@ window.Transport = (function () {
     return new DataView(b.buffer);
   }
   async function scan(onResult, ms) {
-    await B().initialize();
-    await B().requestLEScan({ allowDuplicates: false }, function (r) {
-      onResult({ id: r.device.deviceId, name: r.localName || r.device.name || '', rssi: r.rssi });
-    });
-    await new Promise(function (res) { setTimeout(res, ms); });
-    try { await B().stopLEScan(); } catch (e) {}
+    await initialize();
+    if (st.scanning) throw new Error('Cihaz axtarışı artıq davam edir');
+    st.scanning = true;
+    try {
+      await B().requestLEScan({ allowDuplicates: false }, function (r) {
+        if (!r || !r.device || !r.device.deviceId || typeof onResult !== 'function') return;
+        onResult({ id: r.device.deviceId, name: r.localName || r.device.name || '', rssi: r.rssi });
+      });
+      await new Promise(function (res) { setTimeout(res, Math.max(1000, Number(ms) || 10000)); });
+    } finally {
+      try { await B().stopLEScan(); } finally { st.scanning = false; }
+    }
   }
   async function connect(id, onDisc) {
+    if (!id) throw new Error('Adapter cihaz ID-si boşdur');
+    await initialize();
     st.id = id; st.onDisc = onDisc;
-    await B().initialize();
-    await B().connect(id, function () {
-      Log.add('BLE', 'ayrıldı');
-      if (st.onDisc) st.onDisc();
-    }, { timeout: 10000 });
-    return await B().getServices(id);
+    try {
+      await B().connect(id, function () {
+        Log.add('BLE', 'ayrıldı');
+        if (st.onDisc) st.onDisc();
+      }, { timeout: 15000 });
+      var services = await B().getServices(id);
+      if (!Array.isArray(services) || !services.length) throw new Error('Adapter GATT xidmətləri təqdim etmədi');
+      return services;
+    } catch (e) {
+      try { await B().disconnect(id); } catch (ignore) {}
+      st.id = null; st.wSvc = st.w = st.nSvc = st.n = null;
+      throw e;
+    }
   }
   async function reconnect() {
-    await B().initialize();
+    if (!st.id) throw new Error('Yenidən qoşulmaq üçün adapter ID-si yoxdur');
+    await initialize();
     await B().connect(st.id, function () {
       Log.add('BLE', 'ayrıldı');
       if (st.onDisc) st.onDisc();
@@ -40,6 +63,7 @@ window.Transport = (function () {
     st.wSvc = wSvc; st.w = w; st.nSvc = nSvc; st.n = n; st.wnr = !!wnr;
   }
   async function startNotify(onData) {
+    if (!st.id || !st.nSvc || !st.n) throw new Error('BLE bildiriş kanalı seçilməyib');
     if (onData) st.onData = onData;
     await B().startNotifications(st.id, st.nSvc, st.n, function (dv) {
       if (st.onData) st.onData(txt(dv));
@@ -49,6 +73,8 @@ window.Transport = (function () {
     try { await B().stopNotifications(st.id, st.nSvc, st.n); } catch (e) {}
   }
   async function write(s) {
+    if (!st.id || !st.wSvc || !st.w) throw new Error('BLE yazı kanalı seçilməyib');
+    s = String(s);
     for (var i = 0; i < s.length; i += 20) {
       var dv = enc(s.substr(i, 20));
       if (st.wnr) await B().writeWithoutResponse(st.id, st.wSvc, st.w, dv);
@@ -56,7 +82,10 @@ window.Transport = (function () {
     }
   }
   async function disconnect() {
-    try { await B().disconnect(st.id); } catch (e) {}
+    var id = st.id;
+    try { if (id && B()) await B().disconnect(id); } finally {
+      st.id = null; st.wSvc = st.w = st.nSvc = st.n = null; st.wnr = false;
+    }
   }
   return { scan: scan, connect: connect, reconnect: reconnect, bind: bind, startNotify: startNotify, stopNotify: stopNotify, write: write, disconnect: disconnect };
 })();
