@@ -5,7 +5,7 @@ const file = path.join(__dirname, '..', 'www', 'js', 'ble.js');
 if (!fs.existsSync(file)) throw new Error('www/js/ble.js yaradılmayıb; npm run build:ble icra edilməlidir');
 const code = fs.readFileSync(file, 'utf8');
 if (code.length < 5000) throw new Error('BLE bundle gözləniləndən çox kiçikdir; fallback fayl build nəticəsi kimi qəbul edilmir');
-for (const token of ['ACOBDFiles', 'appendText', 'saveText', 'BleClient', 'CapApp']) {
+for (const token of ['ACOBDFiles', 'appendText', 'saveText', 'BleClient', 'CapApp', 'appendFile']) {
   if (!code.includes(token)) throw new Error('BLE bundle-də tələb olunan inteqrasiya yoxdur: ' + token);
 }
 if (/window\.BleClient\s*=\s*window\.BleClient\s*\|\|\s*\{\}/.test(code)) {
