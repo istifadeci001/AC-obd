@@ -285,7 +285,7 @@
     else if (r === 'fail') { errMsg = T('Paylaşmaq və kopyalamaq alınmadı.', 'Share and copy failed.'); }
   }
 
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', async function (e) {
     var el = e.target.closest('[data-ex]');
     if (!el || el.tagName === 'SELECT') return;
     var a = el.getAttribute('data-ex'), id = el.getAttribute('data-id');
@@ -313,7 +313,12 @@
     else if (a === 'tsave') {
       var lb = document.getElementById('tlabel');
       if (!Object.keys(OBD.values).length) errMsg = T('Saxlamaq üçün canlı məlumat yoxdur.', 'No live data to save.');
-      else { Session.saveTest(lb ? lb.value.trim() : ''); msg = T('Test nəticəsi saxlanıldı.', 'Test result saved.'); }
+      else {
+        var saved = await Session.saveTest(lb ? lb.value.trim() : '');
+        if (saved && saved.ok && saved.savedToDevice !== false) msg = T('Test jurnalı ACOBD qovluğunda saxlanıldı: ', 'Test journal saved in ACOBD folder: ') + saved.name;
+        else if (saved && saved.ok && saved.savedToDevice === false) msg = T('Test tətbiqin daxili yaddaşında saxlanıldı, lakin TXT faylı yaradılmadı: BLE/Fayl modulu hazır deyil.', 'Test saved in app storage, but TXT was not created: BLE/File module is unavailable.');
+        else errMsg = T('Test TXT faylı saxlanmadı: ', 'Test TXT file was not saved: ') + (saved && saved.error ? saved.error : T('naməlum xəta', 'unknown error'));
+      }
       rerender();
     }
     else if (a === 'tcmp') {

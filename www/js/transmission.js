@@ -2,7 +2,7 @@
   'use strict';
   if (!window.OBD || !window.ELM || !window.TransmissionCore) return;
   var view = document.getElementById('view'), core = window.TransmissionCore;
-  var result = null, busy = false, error = '', message = '', fluid = { color: '', smell: '', debris: '' }, lastSavedName = '';
+  var result = null, busy = false, error = '', message = '', fluid = Store.get('transmission_fluid', { color: '', smell: '', debris: '' }) || { color: '', smell: '', debris: '' }, lastSavedName = '';
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function cur() { return (location.hash || '#dashboard').slice(1); }
   function card(s, cls) { return '<div class="card' + (cls ? ' ' + cls : '') + '">' + s + '</div>'; }
@@ -102,7 +102,7 @@
     } catch (e) { error = 'Skan alınmadı: ' + e.message; Log.add('TCM', error); }
     busy = false; render();
   }
-  function hasData() { return !!(result || fluid.color || fluid.smell || fluid.debris || (window.Log && Log.all && Log.all().length)); }
+  function hasData() { return !!(result || fluid.color || fluid.smell || fluid.debris); }
   function reportText() {
     var lines = ['ACOBD — TRANSMISSION DIAGNOSTICS', 'Vehicle: Kia Forte 2015 1.8 MPI (A6GF1 — ilkin uyğunluq)', 'Date: ' + new Date().toISOString(), 'Adapter: ' + ((OBD.S && OBD.S.deviceName) || '—'), 'Protocol: ' + ((OBD.S && OBD.S.protocol) || '—'), ''];
     if (result) { lines.push('TCM/ECU SCAN:'); lines.push(JSON.stringify(result, null, 2)); }
@@ -120,7 +120,7 @@
   }
   function fileName() {
     var d = new Date(), p2 = function (n) { return ('0' + n).slice(-2); };
-    return 'ACOBD-karobka-' + d.getFullYear() + p2(d.getMonth()+1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.txt';
+    return 'ACOBD-karobka-' + d.getFullYear() + p2(d.getMonth()+1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '-' + d.getMilliseconds() + '.txt';
   }
   async function saveReport(reason) {
     if (!hasData()) return { ok: true, skipped: true };
@@ -137,7 +137,7 @@
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { message = 'Karobka hesabatı kopyalandı.'; render(); }, fallback); else fallback();
   }
   function exportText() {
-    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([reportText()], { type: 'text/plain;charset=utf-8' })); a.download = fileName(); document.body.appendChild(a); a.click(); a.remove();
+    var a = document.createElement('a'), url = URL.createObjectURL(new Blob([reportText()], { type: 'text/plain;charset=utf-8' })); a.href = url; a.download = fileName(); document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-tr]'); if (!el) return;
@@ -145,13 +145,14 @@
     if (a === 'scan') scan();
     else if (a === 'save') saveReport('manual').catch(function (e) { error = 'Saxlanmadı: ' + e.message; render(); });
     else if (a === 'copy') copyReport();
-    else if (a === 'fluidSave') { fluid.color = (document.getElementById('tr-color') || {}).value || ''; fluid.smell = (document.getElementById('tr-smell') || {}).value || ''; fluid.debris = (document.getElementById('tr-debris') || {}).value || ''; message = 'Fiziki yoxlama qeydləri saxlanıldı (OBD ölçümü deyil).'; render(); }
+    else if (a === 'fluidSave') { fluid.color = (document.getElementById('tr-color') || {}).value || ''; fluid.smell = (document.getElementById('tr-smell') || {}).value || ''; fluid.debris = (document.getElementById('tr-debris') || {}).value || ''; Store.set('transmission_fluid', fluid); message = 'Fiziki yoxlama qeydləri saxlanıldı (OBD ölçümü deyil).'; render(); }
     else if (a === 'export') exportText();
   });
   document.addEventListener('change', function (e) {
     if (e.target.id === 'tr-color') fluid.color = e.target.value;
     if (e.target.id === 'tr-smell') fluid.smell = e.target.value;
     if (e.target.id === 'tr-debris') fluid.debris = e.target.value;
+    if (/^tr-(color|smell|debris)$/.test(e.target.id)) Store.set('transmission_fluid', fluid);
   });
   window.addEventListener('hashchange', render);
   OBD.on(function () { if (cur() === 'transmission' && !busy) render(); });

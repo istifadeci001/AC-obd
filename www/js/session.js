@@ -72,9 +72,39 @@ window.Session = (function () {
   }
 
   function saveTest(label) {
-    var l = Store.get('tests', []);
-    l.unshift({ id: 't' + Date.now(), label: label || 'Test', t: new Date().toISOString(), stats: stats() });
-    Store.set('tests', l.slice(0, 20));
+    var t = new Date(), id = 't' + t.getTime(), item = { id: id, label: label || 'Test', t: t.toISOString(), stats: stats() };
+    var l = Store.get('tests', []); l.unshift(item);
+    if (!Store.set('tests', l.slice(0, 20))) return { ok: false, error: 'Test siyahısı yaddaşa yazılmadı' };
+    var safe = String(item.label).normalize ? String(item.label).normalize('NFKD') : String(item.label);
+    safe = safe.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'Test';
+    var p2 = function (n) { return ('0' + n).slice(-2); };
+    var name = 'ACOBD-test-' + safe + '-' + t.getFullYear() + p2(t.getMonth()+1) + p2(t.getDate()) + '-' + p2(t.getHours()) + p2(t.getMinutes()) + p2(t.getSeconds()) + '.txt';
+    var lines = ['ACOBD — TEST JURNALI', 'Test: ' + item.label, 'Tarix: ' + item.t,
+      'VIN: ' + (ctx.vin || 'OXUNMAYIB'), 'ECU kalibrasiyası: ' + (ctx.cal || 'OXUNMAYIB'),
+      'ELM versiyası: ' + (S.elmVersion || 'MƏLUM DEYİL'), 'Protokol: ' + (S.protocol || 'MƏLUM DEYİL'),
+      'Nümunələr: ' + (rec.rows || []).length, '', 'STATİSTİKA', JSON.stringify(item.stats, null, 2), '',
+      'PID SİYAHISI: ' + (rec.cols || []).join(', '), 'ZAMAN SIRALI NÜMUNƏLƏR (saniyə; boş xana = etibarlı nümunə yoxdur)'];
+    if (rec.cols && rec.cols.length) lines.push(['s'].concat(rec.cols).join('\t'));
+    (rec.rows || []).forEach(function (row) { lines.push(row.map(function (v) { return v === '' || v === null || typeof v === 'undefined' ? '' : String(v); }).join('\t')); });
+    lines.push('', 'DTC / FREEZE FRAME', JSON.stringify({ dtc: ctx.dtc, freeze: ctx.freeze }, null, 2), '',
+      'QEYD: yalnız faktiki oxunmuş məlumatlar saxlanır; boş göstəricilər diaqnoz kimi yozulmur.');
+    var text = lines.join('\n');
+    if (window.ACOBDFiles && typeof ACOBDFiles.saveText === 'function') {
+      return ACOBDFiles.saveText(name, text).then(function () {
+        return { ok: true, id: id, name: name, savedToDevice: true };
+      }).catch(function (e) {
+        // TXT faylı yazılmadısa, test siyahısındakı saxta uğur qeydini geri al.
+        var current = Store.get('tests', []);
+        var rolledBack = current.filter(function (x) { return x.id !== id; });
+        var rollbackOk = Store.set('tests', rolledBack);
+        return { ok: false, id: id, name: name, rollbackOk: rollbackOk,
+          error: e && e.message ? e.message : String(e) };
+      });
+    }
+    var rollback = Store.get('tests', []).filter(function (x) { return x.id !== id; });
+    var rollbackOk = Store.set('tests', rollback);
+    return { ok: false, id: id, savedToDevice: false, rollbackOk: rollbackOk,
+      name: name, error: 'ACOBDFiles modulu mövcud deyil' };
   }
   function tests() { return Store.get('tests', []); }
   function compare(a, b) {
@@ -358,13 +388,14 @@ window.AutoLog = (function () {
       for (var i = 0; i < mids.length; i++) { try { out.push(await OBD.mode06Read(mids[i])); } catch (e) { out.push({ mid: mids[i], error: e.message, tests: [] }); } }
       return { list: mids, reads: out };
     });
-    await step(s, 'rawPids', async function () {
-      var out = {};
-      var ids = S.supported.filter(function (x) { return !P(x) && parseInt(x, 16) % 32 !== 0; });
-      for (var i = 0; i < ids.length; i++) { try { var r = await OBD.raw('01' + ids[i], 3000); out[ids[i]] = r.msgs.join(' | ') || r.txt.join(' '); } catch (e) { out[ids[i]] = 'ERR ' + e.message; } }
-      return out;
-    });
-    s.busy = false; save();
+    try {
+      await step(s, 'rawPids', async function () {
+        var out = {};
+        var ids = S.supported.filter(function (x) { return !P(x) && parseInt(x, 16) % 32 !== 0; });
+        for (var i = 0; i < ids.length; i++) { try { var r = await OBD.raw('01' + ids[i], 3000); out[ids[i]] = r.msgs.join(' | ') || r.txt.join(' '); } catch (e) { out[ids[i]] = 'ERR ' + e.message; } }
+        return out;
+      });
+    } finally { s.busy = false; save(); }
   }
 
   function save() {

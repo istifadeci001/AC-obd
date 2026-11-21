@@ -291,7 +291,18 @@ window.OBD = (function () {
 // obd-extra.js-dən SONRA yüklənməlidir.
 (function () {
   'use strict';
-  var RAW = [], MAXRAW = 3000;
+  var RAW = [], MAXRAW = 10000, diskName = null, diskQueue = Promise.resolve(), diskError = '';
+  function stamp(d) {
+    function p(n) { return ('0' + n).slice(-2); }
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+  function persist(entry) {
+    if (!window.ACOBDFiles || typeof ACOBDFiles.appendText !== 'function') return;
+    if (!diskName) diskName = 'ACOBD-canli-ELM-' + stamp(new Date()) + '.txt';
+    var text = entry.t + ' TX ' + entry.cmd + '\n' + (entry.lines || []).map(function (l) { return '    RX ' + l; }).join('\n') + '\n';
+    // Fayl yazıları sıraya alınır; paralel append-lər bir-birinin ardıcıllığını pozmur.
+    diskQueue = diskQueue.then(function () { return ACOBDFiles.appendText(diskName, text); }).catch(function (e) { diskError = String(e && e.message || e); });
+  }
   function hex(n) { return ('0' + n.toString(16)).slice(-2).toUpperCase(); }
   function hexs(a) { return a.map(hex).join(' '); }
   function bytes(h) { var o = []; for (var i = 0; i + 1 < h.length; i += 2) o.push(parseInt(h.substr(i, 2), 16)); return o; }
@@ -299,10 +310,12 @@ window.OBD = (function () {
 
   // Bütün ELM cavabları (Mode 01 daxil) böyük, ayrıca jurnalda saxlanır. Log (400 sətir) bunu itirir.
   window.RawLog = {
-    add: function (cmd, lines) { RAW.push({ t: new Date().toISOString(), cmd: cmd, lines: lines }); if (RAW.length > MAXRAW) RAW.shift(); },
+    add: function (cmd, lines) { var e = { t: new Date().toISOString(), cmd: String(cmd), lines: (lines || []).map(String) }; RAW.push(e); if (RAW.length > MAXRAW) RAW.shift(); persist(e); },
     all: function () { return RAW.slice(); },
     clear: function () { RAW = []; },
-    text: function () { return RAW.map(function (e) { return e.t + ' TX ' + e.cmd + '\n' + (e.lines || []).map(function (l) { return '    RX ' + l; }).join('\n'); }).join('\n'); }
+    text: function () { return RAW.map(function (e) { return e.t + ' TX ' + e.cmd + '\n' + (e.lines || []).map(function (l) { return '    RX ' + l; }).join('\n'); }).join('\n'); },
+    flush: function () { return diskQueue.then(function () { return { ok: !diskError, name: diskName, error: diskError }; }); },
+    fileName: function () { return diskName; }
   };
   if (window.ELM && !ELM.rawWrapped) {
     var orig = ELM.send;
