@@ -35,5 +35,32 @@ window.ACOBDFiles = {
       encoding: Encoding.UTF8,
       recursive: true
     });
-  }
+  },
+};
+
+// Explicit assignment keeps the public bridge name stable in the generated bundle.
+window.ACOBDFiles.appendText = async function (name, data) {
+    if (typeof name !== 'string' || !/^[a-zA-Z0-9_-]+\.txt$/.test(name)) {
+      throw new Error('Invalid ACOBD filename');
+    }
+    try {
+      await Filesystem.appendFile({
+        path: 'ACOBD/' + name,
+        data: String(data),
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8
+      });
+    } catch (error) {
+      // appendFile fayl yoxdursa bəzi platformalarda xəta verir; yalnız bu halda yaradılır.
+      const exists = await Filesystem.stat({ path: 'ACOBD/' + name, directory: Directory.Documents }).catch(() => null);
+      if (exists) throw error;
+      return Filesystem.writeFile({
+        path: 'ACOBD/' + name,
+        data: String(data),
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+        recursive: true
+      });
+    }
+    return { uri: 'ACOBD/' + name };
 };
