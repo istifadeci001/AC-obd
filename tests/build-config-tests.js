@@ -18,12 +18,17 @@ assert.ok(ble.includes("from '@capacitor/filesystem'"),
   'BLE entry must import Filesystem');
 assert.ok(pkg.scripts && pkg.scripts['build:ble'],
   'build:ble script must exist');
+assert.ok(pkg.scripts && pkg.scripts['verify:ble'],
+  'verify:ble script must exist');
+assert.ok(fs.existsSync(path.join(root, 'tools/verify-ble-bundle.js')),
+  'BLE bundle verifier must exist');
 
 const installAt = workflow.indexOf('npm install --no-audit --no-fund');
 const bleBuildAt = workflow.indexOf('npm run build:ble');
 const verifyAt = workflow.indexOf('npm ls @capacitor/filesystem');
 assert.ok(installAt >= 0 && verifyAt > installAt && bleBuildAt > verifyAt,
   'CI must install and verify Filesystem before building BLE');
+assert.ok(workflow.includes('npm run verify:ble'), 'CI must verify the generated BLE bundle');
 assert.strictEqual((workflow.match(/npm install --no-audit --no-fund/g) || []).length, 1,
   'CI should install dependencies once');
 console.log('OK: BLE dependency and CI build order checks passed.');
