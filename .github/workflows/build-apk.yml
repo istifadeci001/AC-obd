@@ -26,10 +26,11 @@ jobs:
           node -e "require.resolve('@capacitor/filesystem')"
           node tests/build-config-tests.js
 
-      - name: BLE faylını qur və yoxla
-        run: |
-          npm run build:ble
-          npm run verify:ble
+      - name: BLE faylını qur
+        run: npm run build:ble
+
+      - name: Yaradılmış BLE bundle-ı yoxla
+        run: npm run verify:ble
 
       - uses: actions/setup-java@v4
         with:
