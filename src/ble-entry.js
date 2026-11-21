@@ -36,10 +36,7 @@ window.ACOBDFiles = {
       recursive: true
     });
   },
-};
-
-// Explicit assignment keeps the public bridge name stable in the generated bundle.
-window.ACOBDFiles.appendText = async function (name, data) {
+  appendText: async function (name, data) {
     if (typeof name !== 'string' || !/^[a-zA-Z0-9_-]+\.txt$/.test(name)) {
       throw new Error('Invalid ACOBD filename');
     }
@@ -63,4 +60,5 @@ window.ACOBDFiles.appendText = async function (name, data) {
       });
     }
     return { uri: 'ACOBD/' + name };
+  }
 };
